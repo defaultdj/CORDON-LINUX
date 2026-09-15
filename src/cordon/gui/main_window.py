@@ -30,6 +30,7 @@ from ..core import preflight, util
 from ..core.errors import CordonError
 from ..core.models import BACKEND_FUSE, ENGINE_FLAG_LABELS, Profile
 from ..core.service import CordonService
+from . import geometry as geometry_mod
 from . import theme as theme_mod
 from .dialogs import AboutDialog, LauncherSettingsDialog, Mo2Dialog, ProfileDialog, ReportDialog
 from .widgets import ModTable, ProfileList, ReportPane, StatusStrip, make_button, summary_line
@@ -50,7 +51,12 @@ class MainWindow(QMainWindow):
         self.actions_map: dict[str, QAction] = {}
 
         self.setWindowTitle(f"CORDON-LINUX {__version__}")
-        self.resize(1280, 820)
+        # Small screens (1024x768 is still common for S.T.A.L.K.E.R.) must not get a window
+        # bigger than their display: everything derives from the available area.
+        self._screen = geometry_mod.screen_size()
+        self._compact = geometry_mod.compact_mode(self._screen)
+        self.setMinimumSize(*geometry_mod.minimum_window(self._screen))
+        self.resize(*geometry_mod.fit_size((1280, 820), self._screen))
 
         self._header = self._build_header()
         self._build_central()
@@ -118,8 +124,9 @@ class MainWindow(QMainWindow):
         action("Настройки профиля", self.edit_profile, "Ctrl+E", "Изменить выбранный профиль")
         action("Дублировать", self.duplicate_profile, "", "Копия профиля вместе с модами")
         action("Удалить", self.delete_profile, "Ctrl+Delete", "Удалить профиль")
-        button("Новый профиль", self.new_profile, "Ctrl+N")
-        button("Настройки", self.edit_profile, "Ctrl+E — изменить профиль")
+        if not self._compact:
+            button("Новый профиль", self.new_profile, "Ctrl+N")
+            button("Настройки", self.edit_profile, "Ctrl+E — изменить профиль")
         menu_button(
             "Профиль",
             [self.actions_map["Дублировать"], self.actions_map["Удалить"]],
@@ -149,8 +156,9 @@ class MainWindow(QMainWindow):
         action("Отчёт", self.save_report, "Ctrl+P", "Сохранить отчёт о профиле")
         action("Настройки лаунчера", self.launcher_settings, "Ctrl+,", "Тема, Discord-статус, размер журнала")
         action("О программе", self.show_about, "F1", "Версия и каталоги лаунчера")
-        button("Собрать", self.prepare_profile, "F5 — собрать оверлей профиля")
-        button("Проверить", self.run_checks, "F6 — предполётные проверки")
+        if not self._compact:
+            button("Собрать", self.prepare_profile, "F5 — собрать оверлей профиля")
+            button("Проверить", self.run_checks, "F6 — предполётные проверки")
         menu_button(
             "Инструменты",
             [
@@ -186,7 +194,7 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
 
         left = QWidget()
-        left.setMinimumWidth(300)
+        left.setMinimumWidth(geometry_mod.sidebar_width(self._screen, preferred=300, minimum=180))
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(8, 8, 4, 8)
         header = QLabel("Профили")
@@ -222,22 +230,25 @@ class MainWindow(QMainWindow):
         mods_layout.addWidget(self.mod_table, 1)
 
         mod_buttons = QHBoxLayout()
-        for text, slot, tip in (
-            ("Вверх", lambda: self._move_selected(-1), "Выше в списке — ниже приоритет"),
-            ("Вниз", lambda: self._move_selected(1), "Ниже в списке — выше приоритет"),
-            ("Включить все", lambda: self._set_all(True), ""),
-            ("Отключить все", lambda: self._set_all(False), ""),
-            ("Убрать из профиля", self.remove_mod, "Убрать мод из профиля"),
-            ("Удалить файлы", self.delete_mod_files, "Убрать и удалить распакованные файлы мода"),
+        mod_buttons.setSpacing(4 if self._compact else 6)
+        for text, short, slot, tip in (
+            ("Вверх", "Вверх", lambda: self._move_selected(-1), "Выше в списке — ниже приоритет"),
+            ("Вниз", "Вниз", lambda: self._move_selected(1), "Ниже в списке — выше приоритет"),
+            ("Включить все", "Вкл. все", lambda: self._set_all(True), "Включить все моды профиля"),
+            ("Отключить все", "Откл. все", lambda: self._set_all(False), "Отключить все моды профиля"),
+            ("Убрать из профиля", "Убрать", self.remove_mod, "Убрать мод из профиля"),
+            ("Удалить файлы", "Удалить файлы", self.delete_mod_files,
+             "Убрать и удалить распакованные файлы мода"),
         ):
-            button = make_button(text)
+            button = make_button(short if self._compact else text)
             button.clicked.connect(slot)
-            if tip:
-                button.setToolTip(tip)
+            button.setToolTip(tip)
             mod_buttons.addWidget(button)
         mod_buttons.addStretch(1)
         self.hint_label = QLabel("Чем ниже мод в списке, тем выше его приоритет (его файлы побеждают).")
         self.hint_label.setObjectName("dim")
+        self.hint_label.setVisible(not self._compact)
+        self.mod_table.setToolTip("Чем ниже мод в списке, тем выше его приоритет (его файлы побеждают).")
         mod_buttons.addWidget(self.hint_label)
         mods_layout.addLayout(mod_buttons)
         self.tabs.addTab(mods_tab, "Моды и приоритет")
@@ -292,7 +303,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([360, 920])
+        splitter.setSizes(geometry_mod.splitter_sizes(self._screen))
         self.splitter = splitter
 
         central = QWidget()
@@ -312,7 +323,7 @@ class MainWindow(QMainWindow):
     def _apply_theme(self) -> None:
         palette = theme_mod.palettes().get(self.settings.theme, theme_mod.PDA)
         self.setPalette(theme_mod.qpalette(palette))
-        self.setStyleSheet(theme_mod.stylesheet(palette))
+        self.setStyleSheet(theme_mod.stylesheet(palette, compact=self._compact))
         self._palette = palette
 
     # ------------------------------------------------------------------ profiles
@@ -1001,6 +1012,12 @@ class MainWindow(QMainWindow):
                 self.restoreGeometry(bytes.fromhex(geometry))
             except ValueError:  # pragma: no cover - corrupt value in settings
                 pass
+        # A geometry saved on a bigger monitor would push the window off a small screen.
+        x, y, width, height = geometry_mod.clamp_rect(
+            self.x(), self.y(), self.width(), self.height(), self._screen
+        )
+        self.resize(width, height)
+        self.move(x, y)
 
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt API
         if self._session_thread is not None:

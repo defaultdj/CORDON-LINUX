@@ -86,12 +86,18 @@ def qpalette(theme: Palette) -> QPalette:
     return palette
 
 
-def stylesheet(theme: Palette) -> str:
+def stylesheet(theme: Palette, *, compact: bool = False) -> str:
+    """Full stylesheet; *compact* shrinks fonts and paddings for small screens (1024x768)."""
+    font_size = 12 if compact else 13
+    button_padding = "4px 7px" if compact else "5px 10px"
+    tab_padding = "5px 9px" if compact else "6px 14px"
+    item_padding = "3px 3px" if compact else "6px 4px"
+    header_padding = "4px" if compact else "5px"
     return f"""
     QWidget {{
         background-color: {theme.window};
         color: {theme.text};
-        font-size: 13px;
+        font-size: {font_size}px;
     }}
     QMainWindow::separator {{ background: {theme.border}; width: 1px; height: 1px; }}
     QWidget#header {{
@@ -109,7 +115,7 @@ def stylesheet(theme: Palette) -> str:
         background: {theme.base};
         border: 1px solid {theme.border};
         border-radius: 3px;
-        padding: 5px 10px;
+        padding: {button_padding};
     }}
     QToolButton:hover, QPushButton:hover {{ border-color: {theme.accent}; color: {theme.accent}; }}
     QToolButton:disabled, QPushButton:disabled {{ color: {theme.dim_text}; border-color: {theme.border}; }}
@@ -129,7 +135,7 @@ def stylesheet(theme: Palette) -> str:
         selection-background-color: {theme.accent};
         selection-color: {theme.accent_text};
     }}
-    QListWidget::item {{ padding: 6px 4px; }}
+    QListWidget::item {{ padding: {item_padding}; }}
     QListWidget::item:selected, QListWidget::item:selected:!active,
     QTableWidget::item:selected, QTableWidget::item:selected:!active,
     QTableView::item:selected, QTableView::item:selected:!active {{
@@ -144,14 +150,14 @@ def stylesheet(theme: Palette) -> str:
         color: {theme.dim_text};
         border: 0;
         border-bottom: 1px solid {theme.border};
-        padding: 5px;
+        padding: {header_padding};
         font-weight: bold;
     }}
     QTabWidget::pane {{ border: 1px solid {theme.border}; top: -1px; }}
     QTabBar::tab {{
         background: {theme.window};
         border: 1px solid {theme.border};
-        padding: 6px 14px;
+        padding: {tab_padding};
         color: {theme.dim_text};
     }}
     QTabBar::tab:selected {{ background: {theme.base}; color: {theme.accent}; border-bottom-color: {theme.base}; }}

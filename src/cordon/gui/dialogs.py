@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -37,6 +39,7 @@ from ..core.models import (
     Profile,
 )
 from ..core.paths import AppPaths
+from . import geometry as geometry_mod
 
 BACKEND_LABELS = {
     BACKEND_LINK: "Символические ссылки (без прав root)",
@@ -72,9 +75,20 @@ class ProfileDialog(QDialog):
         self._app = app
         self._creating = creating
         self.setWindowTitle("Новый профиль" if creating else f"Профиль «{profile.name}»")
-        self.setMinimumWidth(720)
+        screen = geometry_mod.screen_size()
+        self.setMinimumWidth(geometry_mod.fit_width(720, screen))
+        self.resize(*geometry_mod.fit_size((760, 700), screen))
 
-        layout = QVBoxLayout(self)
+        # The form is long (paths, backend, engine keys): on a 1024x768 screen it is scrolled
+        # instead of being cut off, while the buttons stay pinned to the bottom.
+        outer = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        scroll.setWidget(content)
+        layout = QVBoxLayout(content)
+        layout.setContentsMargins(0, 0, 0, 0)
         form = QFormLayout()
         form.setLabelAlignment(Qt.AlignRight)
 
@@ -150,7 +164,7 @@ class ProfileDialog(QDialog):
         form.addRow("Аргументы запуска", self.arguments_edit)
 
         self.description_edit = QPlainTextEdit(profile.description)
-        self.description_edit.setFixedHeight(56)
+        self.description_edit.setFixedHeight(48)
         form.addRow("Описание", self.description_edit)
 
         layout.addLayout(form)
@@ -177,7 +191,8 @@ class ProfileDialog(QDialog):
         self.check_button.clicked.connect(self._run_checks)
         buttons.accepted.connect(self._accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        outer.addWidget(scroll, 1)
+        outer.addWidget(buttons)
 
         self._sync_backend_hint()
         self._sync_enabled()
@@ -306,7 +321,7 @@ class LauncherSettingsDialog(QDialog):
     def __init__(self, settings, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Настройки лаунчера")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(geometry_mod.fit_width(560))
         self._settings = settings
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -364,7 +379,7 @@ class Mo2Dialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Импорт из Mod Organizer 2")
-        self.setMinimumWidth(760)
+        self.setMinimumWidth(geometry_mod.fit_width(760))
 
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -418,7 +433,7 @@ class ReportDialog(QDialog):
     def __init__(self, title: str, text: str, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.resize(900, 620)
+        self.resize(*geometry_mod.fit_size((900, 620)))
         layout = QVBoxLayout(self)
         self.view = QPlainTextEdit(text)
         self.view.setReadOnly(True)
@@ -450,7 +465,7 @@ class AboutDialog(QDialog):
         from .. import UPSTREAM_VERSION
 
         self.setWindowTitle("О программе")
-        self.setMinimumWidth(560)
+        self.setMinimumWidth(geometry_mod.fit_width(560))
         layout = QVBoxLayout(self)
 
         title = QLabel("CORDON-LINUX")
