@@ -1,40 +1,31 @@
 # Third-Party Notices
 
-CORDON includes or uses the following third-party components. Their original licenses remain in effect.
+CordonIX includes or uses the following third-party components. Their original licenses remain in effect.
 
-## Mod Organizer 2 USVFS
+## Python & GUI Libraries
 
-- Project: [ModOrganizer2/usvfs](https://github.com/ModOrganizer2/usvfs)
-- Copyright: Sebastian Herbord and the Mod Organizer 2 Team
-- License: GNU General Public License v3.0 or later
-- Use: stable virtual filesystem backend for x64 and x86 game processes
-- Runtime version: 0.5.7.2
-- Source revision: `57f1ea5e6ad13f7435a7af184748e6c1312c5637`
-- Build compatibility patch: `scripts/patches/usvfs-msvc-pch.patch`
+- **PySide6 / Qt 6** ([Qt Project](https://www.qt.io/)) — GNU LGPL v3 / GPL v3.
+- **Python Standard Library** ([Python Software Foundation](https://www.python.org/)) — PSF License.
 
-The release package contains unmodified runtime binaries built from the upstream project. The complete corresponding source is available from the linked repository. The launcher itself is distributed under GNU GPLv3.
+## Linux Overlay & Engine Integration
 
-## Managed libraries
+- **fuse-overlayfs** ([containers/fuse-overlayfs](https://github.com/containers/fuse-overlayfs)) — GNU General Public License v2.0 or later. Provides user-space overlay filesystem support on Linux.
+- **OpenXRay** ([OpenXRay/xray-16](https://github.com/OpenXRay/xray-16)) — GNU General Public License v3.0 / BSD License. Native Linux port of the X-Ray engine.
+- **Valve Proton / Wine** ([ValveSoftware/Proton](https://github.com/ValveSoftware/Proton)) — Wine License (LGPL v2.1+) / BSD / MIT. Windows executable runner compatibility layer on Linux.
 
-- [AngleSharp](https://github.com/AngleSharp/AngleSharp) 1.5.2 — MIT License.
-- [discord-rpc-csharp](https://github.com/Lachee/discord-rpc-csharp), package `DiscordRichPresence` 1.6.1.70 — MIT License.
-- [NAudio.Vorbis](https://github.com/naudio/Vorbis) 1.5.0 — MIT License.
-- [NAudio](https://github.com/naudio/NAudio), package `NAudio.WinMM` 2.2.1 — MIT License.
-- [SharpCompress](https://github.com/adamhathcock/sharpcompress) 0.50.1 — MIT License.
-- [.NET Runtime](https://github.com/dotnet/runtime), package `System.Text.Encoding.CodePages` 8.0.0 — MIT License.
+## Interface & Typography Assets
 
-## Interface assets
+- **Symbols Nerd Font / JetBrains Mono** ([Nerd Fonts](https://www.nerdfonts.com/)) — SIL Open Font License 1.1 / Apache 2.0. Used for S.T.A.L.K.E.R. PDA theme UI status and conflict indicators (`☢`, `⏱`, `📁`, `⚙`, etc.).
+- **PDA Interface Assets & Atlas** — Derived from S.T.A.L.K.E.R. game resources and community asset packs.
+- **Icons** — Collected from Iconify/Figma icon sets. Each icon remains subject to the license of its respective icon set.
+- **Application Icon** (`packaging/cordonix.svg`) — Project asset.
 
-- PDA interface sounds come from the ModDB package `PDA Sounds by SAM (3 in 1)`, marked Public Domain on its distribution page.
-- Interface icons were collected through Iconify/Figma. Each icon remains subject to the license of its original Iconify icon set.
-- The application icon and launcher-specific composition are project assets.
+## Legacy & Replaced Components
 
-More information about the asset layout is available in [assets/README.md](assets/README.md).
+- **Mod Organizer 2 USVFS (Windows)** — USVFS C++ binaries and Windows hooks are not used in CordonIX for Linux. Virtual filesystem management is handled natively via Linux symbolic/hard links or FUSE overlay layers.
+- **C# / .NET Managed Libraries** — AngleSharp, NAudio, SharpCompress, and .NET runtime dependencies from the original C# Windows build have been replaced with Python native modules (`zipfile`, `tarfile`, `urllib`, `hashlib`, `socket`).
+- **AP-PRO Catalog Browser** — The AP-PRO online browser feature was removed in CordonIX v0.2.0.
 
-## AP-PRO catalog content
+## Game Names and Trademarks
 
-The modification browser reads publicly available metadata and images from [AP-PRO.RU](https://ap-pro.ru/) at runtime. This content is not stored in the source repository and remains the property of AP-PRO, modification authors and their respective rights holders. Clicking a card opens its original AP-PRO page.
-
-## Game names and trademarks
-
-S.T.A.L.K.E.R., X-Ray and related names, artwork and trademarks belong to their respective rights holders. This launcher is an independent community project and is not affiliated with or endorsed by GSC Game World, Mod Organizer 2 or AP-PRO.
+S.T.A.L.K.E.R., X-Ray Engine, and related names, artwork, and trademarks belong to GSC Game World and their respective rights holders. CordonIX is an independent community open-source project and is not affiliated with or endorsed by GSC Game World, Valve, or Mod Organizer 2.
