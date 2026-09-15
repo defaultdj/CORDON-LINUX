@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import shlex
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -238,13 +239,28 @@ class Session:
         return self.process.poll() is None
 
     def stop(self, *, timeout: float = 10.0) -> int:
+        """Terminate the whole session.
+
+        The engine may sit behind wrappers (PortProton's ``start.sh``, ``gamemoderun``,
+        ``systemd-inhibit``); the session runs in its own process group, so the signal goes to
+        the group and the game itself receives it too, not just the outer script.
+        """
         if self.process.poll() is None:
-            self.process.terminate()
+            self._signal_group(signal.SIGTERM)
             try:
                 self.process.wait(timeout=timeout)
             except subprocess.TimeoutExpired:  # pragma: no cover
-                self.process.kill()
+                self._signal_group(signal.SIGKILL)
         return int(self.process.wait())
+
+    def _signal_group(self, sig: int) -> None:
+        try:
+            os.killpg(os.getpgid(self.process.pid), sig)
+        except (ProcessLookupError, PermissionError, OSError):
+            try:
+                self.process.send_signal(sig)
+            except OSError:  # pragma: no cover
+                pass
 
 
 def prepare_launch(
