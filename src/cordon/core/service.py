@@ -12,7 +12,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 
-from . import audit, conflicts, diagnostics, launcherlog, layers, preflight, util, xray
+from . import audit, cleanup, conflicts, diagnostics, launcherlog, layers, preflight, util, xray
 from . import engine as engine_mod
 from . import mods as mods_mod
 from .errors import ProfileError
@@ -135,6 +135,20 @@ class CordonService:
             shutil.rmtree(storage, ignore_errors=True)
         self.logger.info("профиль «%s» удалён (файлы: %s)", profile.name, removed)
         return removed
+
+    def leftovers_for(self, profile: Profile) -> cleanup.LeftoverReport:
+        """What deleting *profile* would leave behind (prefixes, .ppdb, PortProton shortcuts, build)."""
+        return cleanup.scan(
+            profile, self.app, other_profiles=list(self.profiles), portproton_path=self.settings.portproton_path
+        )
+
+    def remove_leftovers(self, items: list[cleanup.Leftover], report: cleanup.LeftoverReport) -> list[str]:
+        errors = cleanup.remove(items, report)
+        for item in items:
+            self.logger.info("удалено: %s (%s)", item.path, item.label)
+        for error in errors:
+            self.logger.warning("остатки: %s", error)
+        return errors
 
     # ------------------------------------------------------------------ plan helpers
     def engine_for(self, profile: Profile):

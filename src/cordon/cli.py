@@ -77,6 +77,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_delete.add_argument("profile")
     p_delete.add_argument("--keep-files", action="store_true", help="оставить каталог профиля на диске")
     p_delete.add_argument("-y", "--yes", action="store_true", help="без подтверждения")
+    p_delete.add_argument(
+        "--purge",
+        action="store_true",
+        help="также удалить остатки: префикс Proton, .ppdb, ярлыки PortProton, установленную лаунчером сборку "
+        "(общие с другими профилями каталоги не трогаются)",
+    )
 
     p_edit = sub.add_parser("edit", help="изменить поля профиля")
     p_edit.add_argument("profile")
@@ -315,9 +321,28 @@ def cmd_delete(args, service: CordonService) -> int:
         if answer not in ("y", "yes", "д", "да"):
             print("Отменено.")
             return EXIT_OK
+    report = service.leftovers_for(profile)
     service.delete_profile(profile.id, remove_files=not args.keep_files)
     print(f"Профиль «{profile.name}» удалён"
           + (" (файлы оставлены)" if args.keep_files else ""))
+    if args.keep_files:
+        return EXIT_OK
+    remaining = [item for item in report.items if os.path.lexists(item.path)]
+    if not remaining:
+        return EXIT_OK
+    print("\nНа диске осталось:")
+    for item in remaining:
+        flag = "  [общее] " if item.shared else "  "
+        print(f"{flag}{item.describe()}")
+    if args.purge:
+        selected = [item for item in remaining if not item.shared]
+        errors = service.remove_leftovers(selected, report)
+        for item in selected:
+            print(f"  удалено: {item.path}")
+        for error in errors:
+            print(f"  ошибка: {error}")
+        return EXIT_OK if not errors else EXIT_ERROR
+    print("Удалить всё, кроме общего: cordon delete --purge (профиль уже удалён — удалите вручную).")
     return EXIT_OK
 
 

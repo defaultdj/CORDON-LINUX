@@ -8,6 +8,7 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QFileDialog,
     QHBoxLayout,
     QLabel,
@@ -32,7 +33,15 @@ from ..core.models import Profile
 from ..core.service import CordonService
 from . import geometry as geometry_mod
 from . import theme as theme_mod
-from .dialogs import AboutDialog, ArchiveScannerDialog, LauncherSettingsDialog, Mo2Dialog, ProfileDialog, ReportDialog
+from .dialogs import (
+    AboutDialog,
+    ArchiveScannerDialog,
+    LauncherSettingsDialog,
+    LeftoversDialog,
+    Mo2Dialog,
+    ProfileDialog,
+    ReportDialog,
+)
 from .screenshots import ScreenshotsPane
 from .widgets import ModTable, ProfileList, ReportPane, StatusStrip, make_button, make_menu_button, summary_line
 from .workers import SessionThread, Task
@@ -595,9 +604,40 @@ class MainWindow(QMainWindow):
         if answer != QMessageBox.Yes:
             return
         name = profile.name
+        try:
+            report = self.service.leftovers_for(profile)
+        except OSError as exc:
+            self._log(f"Не удалось проверить остатки: {exc}")
+            report = None
         self.service.delete_profile(profile.id)
         self.refresh_profiles()
         self._log(f"Профиль «{name}» удалён")
+        if report is None:
+            return
+        report.items = [item for item in report.items if os.path.lexists(item.path)]
+        if not report.items:
+            self._log("На диске от профиля ничего не осталось")
+            return
+        dialog = LeftoversDialog(name, report, parent=self)
+        if dialog.exec() != QDialog.Accepted:
+            self._log("Остатки профиля оставлены: " + "; ".join(item.path for item in report.items))
+            return
+        selected = dialog.selected()
+        if not selected:
+            return
+        answer = QMessageBox.warning(
+            self,
+            "Подтверждение",
+            "Безвозвратно удалить:\n\n" + "\n".join(item.path for item in selected),
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        errors = self.service.remove_leftovers(selected, report)
+        self._log(f"Удалено остатков: {len(selected) - len(errors)}")
+        if errors:
+            self._error("Часть остатков удалить не удалось:\n" + "\n".join(errors))
 
     # ------------------------------------------------------------------ mods
     def _sync_mod_buttons(self) -> None:

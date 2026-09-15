@@ -766,3 +766,58 @@ class AboutDialog(QDialog):
         buttons.rejected.connect(self.reject)
         buttons.accepted.connect(self.accept)
         layout.addWidget(buttons)
+
+
+class LeftoversDialog(QDialog):
+    """After a profile is deleted: what is still on disk, with checkboxes for what to remove."""
+
+    def __init__(self, profile_name: str, report, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle(f"Остатки профиля «{profile_name}»")
+        screen = geometry_mod.screen_size()
+        self.resize(*geometry_mod.fit_size((760, 460), screen))
+        self._report = report
+        layout = QVBoxLayout(self)
+        intro = QLabel(
+            "Профиль удалён. Ниже — каталоги и файлы, которые с ним связаны. Отметьте, что удалить. "
+            "Общие с другими профилями или играми элементы по умолчанию не отмечены."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        self.table = QTableWidget(len(report.items), 3)
+        self.table.setHorizontalHeaderLabels(["Удалить", "Что это", "Путь / размер"])
+        self.table.verticalHeader().setVisible(False)
+        self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        self._checks: list[tuple[QCheckBox, object]] = []
+        for row, item in enumerate(report.items):
+            check = QCheckBox()
+            check.setChecked(not item.shared)
+            holder = QWidget()
+            hl = QHBoxLayout(holder)
+            hl.setContentsMargins(6, 0, 6, 0)
+            hl.setAlignment(Qt.AlignCenter)
+            hl.addWidget(check)
+            self.table.setCellWidget(row, 0, holder)
+            self.table.setItem(row, 1, QTableWidgetItem(item.label + ("  [общее]" if item.shared else "")))
+            size = f"  ({util.human_size(item.size)})" if item.size >= 0 else ""
+            cell = QTableWidgetItem(f"{item.path}{size}")
+            if item.note:
+                cell.setToolTip(item.note)
+            self.table.setItem(row, 2, cell)
+            self._checks.append((check, item))
+        layout.addWidget(self.table, 1)
+        buttons = QDialogButtonBox()
+        remove = buttons.addButton("Удалить отмеченное", QDialogButtonBox.AcceptRole)
+        remove.setDefault(False)
+        keep = buttons.addButton("Оставить всё", QDialogButtonBox.RejectRole)
+        keep.setDefault(True)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def selected(self) -> list:
+        return [item for check, item in self._checks if check.isChecked()]
