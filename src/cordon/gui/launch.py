@@ -56,6 +56,9 @@ def main(argv: list[str] | None = None) -> int:
     QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
     app = QApplication(argv)
     app.setApplicationName("cordon-linux")
+    # Lets the desktop match the window with packaging/cordon-linux.desktop, so the applications
+    # menu shows the right name and icon (critical on Wayland, where WM_CLASS is not enough).
+    app.setDesktopFileName("cordon-linux")
     app.setApplicationDisplayName("CORDON-LINUX")
     app.setApplicationVersion(__version__)
     app.setOrganizationName("CORDON-LINUX")

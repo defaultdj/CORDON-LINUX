@@ -140,25 +140,69 @@ if [[ ${GUI} -eq 1 ]]; then
   ${need_sudo} ln -sf "../lib/cordon-linux/venv/bin/cordon-gui" "${PREFIX}/bin/cordon-gui"
 fi
 
-echo "==> Значок и пункт меню"
-${need_sudo} cp "${ROOT}/packaging/cordon-linux.svg" \
-  "${PREFIX}/share/icons/hicolor/scalable/apps/cordon-linux.svg"
-${need_sudo} sed "s|^Exec=.*|Exec=${PREFIX}/bin/cordon-gui %u|; s|^TryExec=.*|TryExec=${PREFIX}/bin/cordon-gui|" \
-  "${ROOT}/packaging/cordon-linux.desktop" > "${PREFIX}/share/applications/cordon-linux.desktop" 2>/dev/null || \
-  ${need_sudo} cp "${ROOT}/packaging/cordon-linux.desktop" "${PREFIX}/share/applications/cordon-linux.desktop"
+echo "==> Значок и пункт меню (раздел «Игры»)"
+DESKTOP_DIR="${PREFIX}/share/applications"
+ICON_DIR="${PREFIX}/share/icons/hicolor/scalable/apps"
+${need_sudo} mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
 
+${need_sudo} cp "${ROOT}/packaging/cordon-linux.svg" "${ICON_DIR}/cordon-linux.svg"
+
+# The desktop entry is what puts the launcher into the applications menu: the packages that
+# build the menu take «Игры» from Categories=Game, and the icon from Icon=<name> resolved
+# through the hicolor theme. Exec/TryExec must hold the absolute path of this installation.
+desktop_tmp="$(mktemp)"
+sed "s|^Exec=.*|Exec=${PREFIX}/bin/cordon-gui %u|; s|^TryExec=.*|TryExec=${PREFIX}/bin/cordon-gui|" \
+  "${ROOT}/packaging/cordon-linux.desktop" > "${desktop_tmp}"
+# 'install', not a shell redirect: with --system the target lives in /usr/local, and a redirect
+# would either fail or leave the file owned by the current user.
+${need_sudo} install -m 644 "${desktop_tmp}" "${DESKTOP_DIR}/cordon-linux.desktop"
+rm -f "${desktop_tmp}"
+
+if [[ ${GUI} -eq 0 ]]; then
+  echo "  [i] GUI не установлен: TryExec указывает на отсутствующий ${PREFIX}/bin/cordon-gui,"
+  echo "      поэтому в меню пункт пока скрыт — он появится после установки PySide6."
+fi
+if [[ "${PREFIX}" != "${HOME}/.local" && "${PREFIX}" != "/usr" && "${PREFIX}" != "/usr/local" ]]; then
+  echo "  [i] ${PREFIX}/share не входит в стандартные пути меню:"
+  echo "      добавьте export XDG_DATA_DIRS=\"${PREFIX}/share:\${XDG_DATA_DIRS:-/usr/local/share:/usr/share}\""
+fi
+
+if command -v desktop-file-validate >/dev/null 2>&1; then
+  if desktop-file-validate "${DESKTOP_DIR}/cordon-linux.desktop"; then
+    echo "  [OK] пункт меню прошёл проверку (desktop-file-validate)"
+  fi
+else
+  echo "  [i] desktop-file-validate не найден — проверку пункта меню пропускаю"
+  echo "      Arch: sudo pacman -S desktop-file-utils"
+fi
+
+# The menu has to be told that the directory changed, otherwise the new item appears only after
+# a re-login. Every tool is optional: a missing one is only worth a note.
 if command -v update-desktop-database >/dev/null 2>&1; then
-  update-desktop-database "${PREFIX}/share/applications" >/dev/null 2>&1 || true
+  update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
+  echo "  [OK] база пунктов меню обновлена"
+else
+  echo "  [i] update-desktop-database не найден — в меню пункт появится после перезахода"
+  echo "      Arch: sudo pacman -S desktop-file-utils"
 fi
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
-  gtk-update-icon-cache -q "${PREFIX}/share/icons/hicolor" >/dev/null 2>&1 || true
+  gtk-update-icon-cache -q -f -t "${PREFIX}/share/icons/hicolor" >/dev/null 2>&1 || true
 fi
+# KDE keeps its own cache; the command name differs between Plasma 5 and 6.
+for sycoca in kbuildsycoca6 kbuildsycoca5; do
+  if command -v "${sycoca}" >/dev/null 2>&1; then
+    "${sycoca}" >/dev/null 2>&1 || true
+    break
+  fi
+done
+echo "  Пункт меню: ${DESKTOP_DIR}/cordon-linux.desktop"
 
 echo
 echo "Готово."
 echo "  CLI : ${PREFIX}/bin/cordon --help"
 if [[ ${GUI} -eq 1 ]]; then
-  echo "  GUI : ${PREFIX}/bin/cordon-gui   (или пункт «CORDON-LINUX» в меню приложений)"
+  echo "  GUI : ${PREFIX}/bin/cordon-gui"
+  echo "        или значок CORDON-LINUX в меню приложений, раздел «Игры»"
 else
   echo "  GUI : не установлен (нет PySide6). Поставьте вручную: ${VENV}/bin/pip install PySide6-Essentials"
 fi
