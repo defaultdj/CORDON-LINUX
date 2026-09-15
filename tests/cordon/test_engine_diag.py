@@ -382,3 +382,20 @@ def test_select_engines_returns_none_when_forced_mode_has_no_candidate(fake_inst
 def test_select_engines_rejects_unknown_mode(fake_profile):
     with pytest.raises(ValueError):
         engine_mod.select_engines(fake_profile, "steam")
+
+
+def test_standalone_exe_goes_straight_to_windows_runner(fake_install, fake_profile, monkeypatch, tmp_path):
+    """A standalone build ships its own engine: no native OpenXRay attempt, no fallback dance."""
+    from cordon.core.models import PROFILE_KIND_STANDALONE
+
+    exe = _pe_stub(os.path.join(fake_install.game, "bin", "xrEngine.exe"))
+    fake_profile.kind = PROFILE_KIND_STANDALONE
+    fake_profile.executable_source = exe
+    native = _native_stub(monkeypatch, tmp_path)
+
+    active, fallback = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_AUTO)
+    assert active is not None and active.executable == util.norm(exe)
+    assert fallback is None
+    # the explicit "native only" mode still lets the user try the system engine
+    forced, _ = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_NATIVE)
+    assert forced is not None and forced.executable == native

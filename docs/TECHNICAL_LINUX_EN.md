@@ -32,6 +32,7 @@ src/cordon/
 │   ├── diagnostics.py log/dump collection and report rendering
 │   ├── discord.py     Discord IPC over the UNIX socket
 │   ├── screenshots.py per-profile screenshot listing and thumbnails
+│   ├── winerun.py     PortProton / Proton / Wine discovery, Z: paths, .ppdb arguments
 │   └── service.py     CordonService: the single entry point for both front ends
 ├── gui/       PySide6 only (theme, widgets, dialogs, worker threads, main window)
 └── cli.py     argparse front end, one handler per command
@@ -87,9 +88,12 @@ env = parent env + engine dir in LD_LIBRARY_PATH (only when .so files sit next t
 * `Session` reads the merged stdout/stderr stream on a thread, keeps the last N lines and appends
   to `<root>/logs/cordon-session.log`; `finish_session()` joins the reader so the final output is
   never lost, then collects diagnostics and unmounts fuse overlays.
-* Windows builds (`.exe`, detected by `elf.inspect`) are wrapped by `find_windows_runner()`:
-  Proton from `$PATH` or Steam (`steamapps/common/Proton*`, Proton GE) is preferred, `wine64`/`wine`
-  is the fallback. `run_launch()` tries a native OpenXRay first when one is available and
+* Windows builds (`.exe`, detected by `elf.inspect`) are handled by `core/winerun.py`:
+  `find_runner()` picks PortProton (`portproton` in `$PATH`, `~/PortProton`, Flatpak; invoked as
+  `start.sh cli --launch <exe>`, engine arguments written to `<exe>.ppdb` as `LAUNCH_PARAMETERS`
+  because PortProton ignores extra argv), then Proton (`proton run`, with `STEAM_COMPAT_DATA_PATH`
+  pointing at `<profile>/proton-prefix`), then plain Wine. Absolute paths in engine arguments are
+  translated to `Z:\...`; the process starts in the `.exe` directory so the build finds its DLLs. `run_launch()` tries a native OpenXRay first when one is available and
   `Profile.auto_proton_fallback` is set; if that session crashes, the `.exe` is relaunched through
   Proton/Wine in the same prepared workspace. The decision lives in `engine.select_engines(profile,
   runner)` (`auto` / `native` / `proton`) and is shared by the CLI (`launch --runner`) and the GUI

@@ -24,6 +24,15 @@ BACKEND_LINK = "link"
 BACKEND_FUSE = "fuse-overlayfs"
 BACKEND_DIRECT = "direct"
 
+#: How Windows builds (.exe) are started: PortProton, Proton (Steam) or plain Wine.
+WINDOWS_RUNNERS = ("auto", "portproton", "proton", "wine")
+WINDOWS_RUNNER_LABELS = {
+    "auto": "автоматически (PortProton → Proton → Wine)",
+    "portproton": "PortProton",
+    "proton": "Proton (Steam / Proton GE)",
+    "wine": "Wine",
+}
+
 BACKENDS = (BACKEND_LINK, BACKEND_FUSE, BACKEND_DIRECT)
 
 GAME_IDS = ("auto", "cop", "cs", "coc", "custom")
@@ -100,6 +109,7 @@ class Profile:
     isolate_appdata: bool = True
     prefer_native_openxray: bool = True
     auto_proton_fallback: bool = True
+    windows_runner: str = "auto"  # auto | portproton | proton | wine
 
     # ------------------------------------------------------------------ helpers
     @property
@@ -169,6 +179,7 @@ class Profile:
             isolate_appdata=bool(payload.get("isolate_appdata", True)),
             prefer_native_openxray=bool(payload.get("prefer_native_openxray", True)),
             auto_proton_fallback=bool(payload.get("auto_proton_fallback", True)),
+            windows_runner=str(payload.get("windows_runner") or "auto"),
         )
         profile.normalize()
         return profile
@@ -190,6 +201,8 @@ class Profile:
             self.kind = PROFILE_KIND_MODS
         if self.game_id not in GAME_IDS:
             self.game_id = "auto"
+        if self.windows_runner not in WINDOWS_RUNNERS:
+            self.windows_runner = "auto"
         self.excluded_paths = util.unique(self.excluded_paths)
         if not self.created_at:
             self.created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -210,6 +223,7 @@ class LauncherSettings:
     keep_launcher_log_lines: int = 4000
     last_fullscreen: bool = False
     window_geometry: str = ""
+    portproton_path: str = ""  # explicit PortProton root or start.sh when autodetection fails
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -232,6 +246,7 @@ class LauncherSettings:
             keep_launcher_log_lines=int(payload.get("keep_launcher_log_lines") or 4000),
             last_fullscreen=bool(payload.get("last_fullscreen", False)),
             window_geometry=str(payload.get("window_geometry") or ""),
+            portproton_path=str(payload.get("portproton_path") or ""),
         )
         settings.normalize()
         return settings

@@ -125,31 +125,117 @@ def test_unmount_is_safe_without_a_mount(fake_install, fake_profile):
     workspace.unmount()  # must not raise: nothing is mounted
 
 
-def test_exe_executable_uses_wine_runner(fake_install, fake_profile):
+def _fake_exe_info(fake_install):
     from cordon.core import elf
     from cordon.core.engine import EngineInfo
 
     exe_path = os.path.join(fake_install.game, "bin", "xrEngine.exe")
-    fake_info = EngineInfo(
+    util.write_text_atomic(exe_path, "MZ_fake_pe")
+    return EngineInfo(
         executable=exe_path,
         binary=elf.BinaryInfo(path=exe_path, kind="pe", bits=64, machine="x86_64"),
-        engine_root=fake_install.game,
+        engine_root=os.path.join(fake_install.game, "bin"),
         game_root=fake_install.game,
         data_root=fake_install.game,
     )
-    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=fake_info)
-    assert any("wine" in arg.lower() or "proton" in arg.lower() for arg in plan.argv) or "xrEngine.exe" in plan.argv[0]
 
 
-def test_proton_runner_discovery(tmp_path, monkeypatch):
-    fake_proton = tmp_path / "proton"
-    fake_proton.write_text("#!/bin/sh\nexit 0\n")
-    fake_proton.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+def _isolated_runners(monkeypatch, tmp_path):
+    """No PortProton/Proton/Wine leaks in from the developer's machine."""
+    from cordon.core import winerun
 
-    runner, argv = launch.find_windows_runner()
-    assert "proton" in runner.lower()
-    assert argv[0] == runner
+    monkeypatch.setenv("PATH", str(tmp_path / "empty-bin"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setattr(winerun, "PORTPROTON_ROOTS", ())
+    monkeypatch.setattr(winerun, "STEAM_ROOTS", ())
+    monkeypatch.setattr(winerun, "_flatpak_has", lambda *_args: False)
+    return winerun
+
+
+def _fake_tool(directory, name):
+    path = os.path.join(directory, name)
+    util.write_text_atomic(path, "#!/bin/sh\nexit 0\n")
+    os.chmod(path, 0o755)
+    return path
+
+
+def test_exe_via_wine_gets_windows_paths(fake_install, fake_profile, monkeypatch, tmp_path):
+    winerun = _isolated_runners(monkeypatch, tmp_path)
+    wine = _fake_tool(str(tmp_path / "bin"), "wine")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=_fake_exe_info(fake_install))
+    assert plan.argv[0] == wine
+    assert plan.argv[1].endswith("xrEngine.exe")
+    fsltx = plan.argv[plan.argv.index("-fsltx") + 1]
+    assert fsltx.startswith("Z:\\") and "/" not in fsltx, fsltx
+    assert fsltx == winerun.to_windows_path(plan.fsgame_path)
+    assert plan.cwd == os.path.join(fake_install.game, "bin")
+
+
+def test_exe_via_proton_sets_compat_env(fake_install, fake_profile, monkeypatch, tmp_path):
+    _isolated_runners(monkeypatch, tmp_path)
+    proton = _fake_tool(str(tmp_path / "bin"), "proton")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=_fake_exe_info(fake_install))
+    assert plan.argv[:2] == [proton, "run"]
+    assert plan.env["STEAM_COMPAT_DATA_PATH"] == os.path.join(plan.root_path, "proton-prefix")
+    assert os.path.isdir(plan.env["STEAM_COMPAT_DATA_PATH"])
+    assert plan.env["STEAM_COMPAT_CLIENT_INSTALL_PATH"]
+
+
+def test_exe_via_portproton_writes_ppdb(fake_install, fake_profile, monkeypatch, tmp_path):
+    winerun = _isolated_runners(monkeypatch, tmp_path)
+    portproton = _fake_tool(str(tmp_path / "bin"), "portproton")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    info = _fake_exe_info(fake_install)
+    # PortProton's own settings in the .ppdb must survive
+    util.write_text_atomic(info.executable + ".ppdb", '#!/usr/bin/env bash\nexport PW_PREFIX_NAME="STALKER"\n')
+
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=info)
+    assert plan.argv == [portproton, "cli", "--launch", info.executable], plan.argv
+    ppdb = util.read_text(info.executable + ".ppdb")
+    assert 'export PW_PREFIX_NAME="STALKER"' in ppdb
+    assert "export LAUNCH_PARAMETERS=" in ppdb
+    assert "-fsltx" in ppdb and "Z:\\\\" in ppdb, ppdb  # backslashes doubled for bash
+    assert winerun.PPDB_MARKER in ppdb
+    # rewriting keeps exactly one LAUNCH_PARAMETERS line
+    launch.build_launch_plan(fake_profile, fake_install.store, engine=info)
+    assert util.read_text(info.executable + ".ppdb").count("export LAUNCH_PARAMETERS=") == 1
+
+
+def test_exe_without_any_runner_is_a_clear_error(fake_install, fake_profile, monkeypatch, tmp_path):
+    _isolated_runners(monkeypatch, tmp_path)
+    with pytest.raises(launch.LaunchError, match="PortProton"):
+        launch.build_launch_plan(fake_profile, fake_install.store, engine=_fake_exe_info(fake_install))
+
+
+def test_profile_can_pin_the_windows_runner(fake_install, fake_profile, monkeypatch, tmp_path):
+    _isolated_runners(monkeypatch, tmp_path)
+    _fake_tool(str(tmp_path / "bin"), "portproton")
+    wine = _fake_tool(str(tmp_path / "bin"), "wine")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    fake_profile.windows_runner = "wine"
+
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=_fake_exe_info(fake_install))
+    assert plan.argv[0] == wine
+
+
+def test_portproton_found_through_explicit_path(fake_install, fake_profile, monkeypatch, tmp_path):
+    winerun = _isolated_runners(monkeypatch, tmp_path)
+    root = tmp_path / "PortProton"
+    start = _fake_tool(str(root / "data" / "scripts"), "start.sh")
+    runner = winerun.find_portproton(str(root))
+    assert runner is not None and runner.path == start
+    assert winerun.find_portproton("") is None
+
+
+def test_to_windows_path():
+    from cordon.core import winerun
+
+    assert winerun.to_windows_path("/home/u/game/fsgame.ltx") == "Z:\\home\\u\\game\\fsgame.ltx"
+    assert winerun.to_windows_path("-nointro") == "-nointro"
 
 
 def test_automatic_proton_fallback_on_crash(fake_install, fake_profile, monkeypatch):

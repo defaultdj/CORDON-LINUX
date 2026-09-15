@@ -699,6 +699,15 @@ def cmd_tools(args, service: CordonService) -> int:
         print("Не найдены (нужны для отдельных возможностей):")
         for name in missing:
             print(f"  ✗ {name}")
+    from .core import winerun
+
+    runners = winerun.available_runners(portproton_path=service.settings.portproton_path)
+    if runners:
+        print("Запуск Windows-сборок (.exe):")
+        for runner in runners:
+            print(f"  ✓ {runner.label:<16}{runner.path}")
+    else:
+        print("Запуск Windows-сборок (.exe): не найдены PortProton, Proton и Wine")
     print(f"Discord IPC: {'доступен' if discord_available() else 'не найден'}")
     print(screen_summary())
     return EXIT_OK

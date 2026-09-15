@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from . import audit, elf, mounts, util, xray
 from . import engine as engine_mod
 from .layers import LayerPlan
-from .models import BACKEND_FUSE, BACKEND_LINK, Profile
+from .models import BACKEND_FUSE, BACKEND_LINK, WINDOWS_RUNNER_LABELS, Profile
 from .overlay import ProfileWorkspace
 from .paths import AppPaths
 
@@ -192,25 +192,27 @@ def _check_engine(profile: Profile, report: PreflightReport, engine: engine_mod.
     report.engine_executable = info.executable
     report.engine_summary = info.describe()
     if info.binary.kind == "pe":
-        # Windows-сборка: нативно не запустится, но лаунчер умеет запускать .exe через
-        # Proton/Wine (см. launch.find_windows_runner). Импорт ленивый: launch импортирует preflight.
-        from .launch import find_windows_runner
+        # Windows build: cannot run natively, but the launcher hands .exe files to
+        # PortProton / Proton / Wine (see core.winerun).
+        from . import winerun
 
-        runner_bin, _argv = find_windows_runner()
-        if shutil.which(runner_bin) or (os.path.isabs(runner_bin) and os.access(runner_bin, os.X_OK)):
+        runner = winerun.find_runner(preferred=profile.windows_runner)
+        wanted = WINDOWS_RUNNER_LABELS.get(profile.windows_runner, profile.windows_runner)
+        if runner is not None:
             report.add(
                 LEVEL_WARNING,
-                "Найден Windows-исполняемый файл (.exe)",
-                f"{info.executable}: {info.binary.summary()} — запуск через {runner_bin}",
-                "Нативный OpenXRay быстрее и стабильнее: если сборка не требует своих DLL, "
-                "укажите в настройках профиля Linux-сборку движка (xr_3da).",
+                "Windows-сборка (.exe): запуск через " + runner.label,
+                f"{info.executable}: {info.binary.summary()} → {runner.path}",
+                "Нативный OpenXRay быстрее и стабильнее, но большинство готовых сборок требуют "
+                "собственный движок — это нормально. Способ запуска меняется в настройках профиля.",
             )
         else:
             report.add(
                 LEVEL_ERROR,
-                "Найден Windows-исполняемый файл (.exe), но Proton/Wine не найдены",
+                f"Windows-сборка (.exe), но «{wanted}» не найден",
                 f"{info.executable}: {info.binary.summary()}",
-                "Установите Wine или Proton (Steam / Proton GE) либо укажите нативную сборку OpenXRay.",
+                "Установите PortProton (portproton в PATH или ~/PortProton), Proton через Steam или Wine; "
+                "путь к PortProton можно указать в настройках лаунчера.",
             )
         return
     if info.binary.kind != "elf":

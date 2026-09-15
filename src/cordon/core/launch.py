@@ -22,11 +22,11 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from . import diagnostics, layers, preflight, util, xray
+from . import diagnostics, layers, preflight, util, winerun, xray
 from . import engine as engine_mod
 from .errors import LaunchError
 from .layers import LayerPlan
-from .models import BACKEND_FUSE, LaunchPlan, Profile
+from .models import BACKEND_FUSE, WINDOWS_RUNNER_LABELS, LaunchPlan, Profile
 from .overlay import ProfileWorkspace
 from .paths import AppPaths
 
@@ -53,39 +53,6 @@ class LaunchOutcome:
         return bool(self.returncode not in (0, None))
 
 
-def find_windows_runner() -> tuple[str, list[str]]:
-    """Locate Proton or Wine runner for Windows executables (.exe).
-
-    Prefers Proton (system proton binary, proton-ge, or Steam Proton installs) over stock Wine.
-    """
-    for cmd in ("proton", "proton-ge", "proton-ge-custom"):
-        path = shutil.which(cmd)
-        if path:
-            return path, [path, "run"] if cmd == "proton" else [path]
-
-    home = os.path.expanduser("~")
-    steam_dirs = [
-        os.path.join(home, ".steam", "root", "steamapps", "common"),
-        os.path.join(home, ".local", "share", "Steam", "steamapps", "common"),
-        os.path.join(home, ".var", "app", "com.valvesoftware.Steam", "data", "Steam", "steamapps", "common"),
-        "/usr/share/steam/compatibilitytools.d",
-    ]
-    for base in steam_dirs:
-        if not os.path.isdir(base):
-            continue
-        try:
-            for name in util.entry_names(base):
-                if "proton" in name.lower():
-                    candidate = os.path.join(base, name, "proton")
-                    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                        return candidate, [candidate, "run"]
-        except OSError:  # pragma: no cover
-            pass
-
-    wine = shutil.which("wine64") or shutil.which("wine") or "wine"
-    return wine, [wine]
-
-
 def build_launch_plan(
     profile: Profile,
     app: AppPaths,
@@ -94,55 +61,86 @@ def build_launch_plan(
     workspace: ProfileWorkspace | None = None,
     fsgame_path: str = "",
     appdata_path: str = "",
+    portproton_path: str = "",
 ) -> LaunchPlan:
     info = engine or engine_mod.require_engine(profile)
     space = workspace or ProfileWorkspace(app, profile)
     root = space.root
     notes: list[str] = []
+    is_windows = info.executable.lower().endswith(".exe")
 
-    argv: list[str] = []
-    if info.executable.lower().endswith(".exe"):
-        runner_bin, runner_argv = find_windows_runner()
-        argv = list(runner_argv) + [info.executable]
-        notes.append(f"запуск Windows-бинарника через {os.path.basename(runner_bin)}")
-    else:
-        argv = [info.executable]
+    # Engine arguments (identical for native and Windows builds; paths are translated below).
+    game_args: list[str] = []
     if profile.is_standalone:
         cwd = util.norm(profile.game_path) or info.engine_root
         if profile.isolate_appdata and os.path.isfile(space.fsgame_path):
-            argv += ["-fsltx", space.fsgame_path]
+            game_args += ["-fsltx", space.fsgame_path]
             if profile.use_overlay_path:
-                argv += ["-overlaypath", space.appdata]
+                game_args += ["-overlaypath", space.appdata]
                 notes.append("данные профиля перенесены ключом -overlaypath")
     else:
         cwd = root
         prepared = fsgame_path or space.fsgame_path
-        argv += ["-fsltx", prepared]
+        game_args += ["-fsltx", prepared]
         if profile.use_overlay_path:
-            argv += ["-overlaypath", appdata_path or space.appdata]
+            game_args += ["-overlaypath", appdata_path or space.appdata]
             notes.append("$app_data_root$ и $logs$ перенесены в профиль (-overlaypath)")
 
     game_switch = xray.engine_switch_for(profile.game_id) or info.game_switch
-    if game_switch and game_switch not in argv:
-        argv.append(game_switch)
+    if game_switch and game_switch not in game_args:
+        game_args.append(game_switch)
         notes.append(f"режим игры движка: {game_switch}")
 
     for flag in profile.engine_flags:
-        if flag and flag not in argv:
-            argv.append(flag)
+        if flag and flag not in game_args:
+            game_args.append(flag)
     try:
         extra = shlex.split(profile.launch_arguments)
     except ValueError as exc:
         raise LaunchError(f"не удалось разобрать дополнительные аргументы профиля: {exc}") from exc
-    argv += extra
+    game_args += extra
 
     env = os.environ.copy()
     engine_dir = os.path.dirname(info.executable)
-    if info.libraries:
-        current = env.get("LD_LIBRARY_PATH", "")
-        if engine_dir not in current.split(":"):
-            env["LD_LIBRARY_PATH"] = f"{engine_dir}:{current}" if current else engine_dir
-            notes.append("LD_LIBRARY_PATH дополнен каталогом движка (portable-сборка)")
+
+    if is_windows:
+        # Wine sees the host filesystem as Z:\ — the engine gets Windows-style paths.
+        game_args = [
+            winerun.to_windows_path(arg) if os.path.isabs(arg) else arg for arg in game_args
+        ]
+        compat_data = os.path.join(root, "proton-prefix")
+        util.ensure_dir(compat_data)
+        runner = winerun.find_runner(
+            preferred=profile.windows_runner, portproton_path=portproton_path, compat_data=compat_data
+        )
+        if runner is None:
+            wanted = WINDOWS_RUNNER_LABELS.get(profile.windows_runner, profile.windows_runner)
+            raise LaunchError(
+                f"Windows-сборка ({os.path.basename(info.executable)}) требует Proton/Wine, "
+                f"но «{wanted}» не найден. Установите PortProton, Proton (Steam) или Wine, "
+                "либо укажите путь к PortProton в настройках лаунчера."
+            )
+        env.update(runner.env)
+        if runner.args_via_ppdb:
+            # PortProton ignores anything after the .exe on its command line:
+            # arguments live in <exe>.ppdb as LAUNCH_PARAMETERS.
+            ppdb = winerun.write_ppdb_launch_parameters(info.executable, game_args)
+            argv = list(runner.argv) + [info.executable]
+            notes.append(f"запуск через {runner.label}; аргументы движка записаны в {ppdb}")
+        else:
+            argv = list(runner.argv) + [info.executable] + game_args
+            notes.append(f"запуск Windows-сборки через {runner.describe()}")
+            if runner.kind == winerun.RUNNER_KIND_PROTON:
+                notes.append(f"префикс Proton: {compat_data}")
+        # the engine must start next to its DLLs; Wine resolves them relative to cwd/exe dir
+        cwd = engine_dir if os.path.isdir(engine_dir) else cwd
+    else:
+        argv = [info.executable] + game_args
+        if info.libraries:
+            current = env.get("LD_LIBRARY_PATH", "")
+            if engine_dir not in current.split(":"):
+                env["LD_LIBRARY_PATH"] = f"{engine_dir}:{current}" if current else engine_dir
+                notes.append("LD_LIBRARY_PATH дополнен каталогом движка (portable-сборка)")
     env.setdefault("SDL_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR", "0")
 
     return LaunchPlan(

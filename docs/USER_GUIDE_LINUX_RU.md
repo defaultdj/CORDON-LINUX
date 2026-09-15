@@ -86,7 +86,7 @@ python3 -m venv ~/.venvs/cordon
 |---|---|---|---|---|
 | `fuse-overlayfs`, `fusermount3` | backend «fuse-overlayfs» | `fuse3 fuse-overlayfs` | `fuse3 fuse-overlayfs` | `fuse3 fuse-overlayfs` |
 | `7z` | `.7z` архивы | `p7zip-full` | `7zip` | `p7zip p7zip-plugins` |
-| `proton` / `wine` | запуск Windows-сборок (`.exe`) | `wine` | `wine` или Proton из Steam | `wine` |
+| `portproton` / `proton` / `wine` | запуск Windows-сборок (`.exe`) | PortProton (linux-gaming.ru) или `wine` | `portproton` (AUR), Proton из Steam или `wine` | PortProton или `wine` |
 | `unrar` | `.rar` архивы | `unrar` | `unrar` | `unrar` |
 | `xdg-open` | открытие папок из окна | `xdg-utils` | `xdg-utils` | `xdg-utils` |
 
@@ -280,6 +280,27 @@ cordon launch "<профиль>" --runner proton  # принудительно .
 cordon launch "<профиль>" --runner native  # только нативный OpenXRay, без фолбэка
 ```
 
+### Windows-сборки: PortProton, Proton, Wine
+
+Если исполняемый файл профиля — `.exe` (почти все готовые сборки), лаунчер передаёт его слою
+совместимости. Порядок автоопределения: **PortProton** → **Proton** (Steam / Proton GE) → **Wine**;
+конкретный вариант выбирается в настройках профиля («Запуск Windows-сборок через»).
+
+* **PortProton** ищется как `portproton` в `PATH`, `~/PortProton`,
+  `~/.local/share/PortWINE/PortProton` и Flatpak `ru.linux_gaming.PortProton`; нестандартный путь
+  задаётся в **Инструменты → Настройки лаунчера → Каталог PortProton**. PortProton игнорирует
+  аргументы после `.exe` в командной строке, поэтому ключи движка (`-fsltx`, `-overlaypath`, ваши
+  аргументы) записываются в файл `<exe>.ppdb` рядом с игрой в переменную `LAUNCH_PARAMETERS`;
+  остальные настройки PortProton в этом файле (префикс, DXVK, MangoHud) не трогаются.
+* **Proton** получает собственный префикс `proton-prefix/` в каталоге профиля
+  (`STEAM_COMPAT_DATA_PATH`); нужен установленный Steam.
+* **Wine** запускается как есть, префикс берётся из `WINEPREFIX`.
+
+Пути в ключах переводятся в вид `Z:\home\...`, как их видит Wine, так что сохранения, логи и
+скриншоты Windows-сборки тоже лежат в каталоге профиля. Для standalone-профилей с `.exe` попытка
+нативного OpenXRay не делается — сборка сразу идёт в PortProton/Proton/Wine (нативный запуск
+остаётся доступен через `--runner native` / Ctrl+F9).
+
 Режимы `--runner`: `auto` (по умолчанию) — нативный OpenXRay, при падении автоматический
 перезапуск через Proton/Wine; `proton` — сразу Windows-`.exe` через Proton/Wine (для сборок,
 которым нужны свои DLL, или если автоопределение сбоя не сработало — движок завис или вышел с
@@ -362,7 +383,9 @@ cordon --portable /media/usb/cordon list       # портативный режи
 | Симптом | Причина и решение |
 |---|---|
 | «Исполняемый файл движка не найден» | в настройках профиля укажите каталог движка или абсолютный путь (`/usr/games/xr_3da` для deb-сборки) |
-| «Найден Windows-исполняемый файл (.exe)» | сборка для Windows: запустится через Proton/Wine (предупреждение) либо нужно установить Wine/Proton или указать нативный OpenXRay (ошибка) |
+| «Windows-сборка (.exe): запуск через …» | нормальное предупреждение: сборка пойдёт через PortProton/Proton/Wine |
+| «Windows-сборка (.exe), но … не найден» | установите PortProton, Proton (Steam) или Wine, либо укажите каталог PortProton в настройках лаунчера |
+| Сборка через PortProton стартует без модов/сохранений профиля | проверьте `<exe>.ppdb` рядом с игрой: там должна быть строка `LAUNCH_PARAMETERS` с `-fsltx`; PortProton должен быть версии с поддержкой `cli --launch` |
 | `Exec format error` при запуске | файл движка не ELF либо нет прав: `chmod +x /путь/xr_3da` |
 | «Не хватает библиотеки движка» | доустановите зависимости: `ldd /usr/games/xr_3da` покажет список |
 | Чёрные/битые текстуры, «cannot find texture» в логе | `cordon audit "<профиль>" --fix` |

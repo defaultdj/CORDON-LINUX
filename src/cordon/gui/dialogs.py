@@ -39,6 +39,7 @@ from ..core.models import (
     GAME_IDS,
     PROFILE_KIND_MODS,
     PROFILE_KIND_STANDALONE,
+    WINDOWS_RUNNER_LABELS,
     Profile,
 )
 from ..core.paths import AppPaths
@@ -199,6 +200,20 @@ class ProfileDialog(QDialog):
         )
         self.auto_fallback_check.setChecked(getattr(profile, "auto_proton_fallback", True))
         flags_layout.addWidget(self.auto_fallback_check)
+        runner_row = QHBoxLayout()
+        runner_row.addWidget(QLabel("Запуск Windows-сборок (.exe) через"))
+        self.windows_runner_combo = QComboBox()
+        for runner_id, label in WINDOWS_RUNNER_LABELS.items():
+            self.windows_runner_combo.addItem(label, runner_id)
+        index = self.windows_runner_combo.findData(getattr(profile, "windows_runner", "auto"))
+        self.windows_runner_combo.setCurrentIndex(max(0, index))
+        self.windows_runner_combo.setToolTip(
+            "PortProton (linux-gaming.ru) берёт на себя префикс, DXVK и настройки; аргументы движка "
+            "записываются в <exe>.ppdb. Proton из Steam получает свой префикс в каталоге профиля. "
+            "Wine использует WINEPREFIX из окружения."
+        )
+        runner_row.addWidget(self.windows_runner_combo, 1)
+        flags_layout.addLayout(runner_row)
         layout.addWidget(flags_box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -297,6 +312,7 @@ class ProfileDialog(QDialog):
         profile.isolate_appdata = self.isolate_check.isChecked()
         profile.prefer_native_openxray = self.prefer_openxray_check.isChecked()
         profile.auto_proton_fallback = self.auto_fallback_check.isChecked()
+        profile.windows_runner = self.windows_runner_combo.currentData() or "auto"
         profile.description = self.description_edit.toPlainText().strip()
         return profile
 
@@ -362,6 +378,10 @@ class LauncherSettingsDialog(QDialog):
         self.log_lines_edit.setPlaceholderText("сколько строк вывода игры хранить в окне")
         form.addRow("Строк вывода в окне", self.log_lines_edit)
 
+        self.portproton_edit = QLineEdit(str(getattr(settings, "portproton_path", "")))
+        self.portproton_edit.setPlaceholderText("пусто — искать автоматически (portproton в PATH, ~/PortProton, Flatpak)")
+        form.addRow("Каталог PortProton", _path_row(self.portproton_edit, self._pick_portproton))
+
         layout.addLayout(form)
 
         hint = QLabel(
@@ -377,7 +397,15 @@ class LauncherSettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _pick_portproton(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Каталог PortProton", self.portproton_edit.text() or os.path.expanduser("~")
+        )
+        if path:
+            self.portproton_edit.setText(path)
+
     def apply_to(self, settings) -> None:
+        settings.portproton_path = self.portproton_edit.text().strip()
         settings.theme = self.theme_combo.currentData()
         settings.discord_presence = self.discord_check.isChecked()
         client_id = self.discord_id_edit.text().strip()

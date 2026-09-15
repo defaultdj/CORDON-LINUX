@@ -311,6 +311,11 @@ def select_engines(profile: Profile, runner: str = RUNNER_AUTO) -> tuple[EngineI
         return find_native_fallback_engine(profile), None
 
     auto_fallback = getattr(profile, "auto_proton_fallback", True)
+    if profile.is_standalone and _is_exe(target):
+        # A standalone build ships its own patched engine and DLLs: a system OpenXRay would
+        # load the wrong scripts/configs and crash (or worse, seem to work). Go straight to
+        # Proton/Wine; the native attempt stays available via ``runner="native"``.
+        return target, None
     native = find_native_fallback_engine(profile) if getattr(profile, "prefer_native_openxray", True) else None
     if native is not None and _is_exe(target) and auto_fallback:
         return native, target

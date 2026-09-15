@@ -51,6 +51,7 @@ class CordonService:
     def load(self) -> LoadResult:
         result = self.store.load()
         self.settings = result.settings
+        self.app.extra["portproton_path"] = self.settings.portproton_path
         self.notices = list(result.notices)
         for notice in result.notices:
             self.logger.warning("%s", notice)
@@ -58,6 +59,7 @@ class CordonService:
 
     def save(self) -> None:
         if self.settings is not None:
+            self.app.extra["portproton_path"] = self.settings.portproton_path
             self.store.save(self.settings)
 
     @property
