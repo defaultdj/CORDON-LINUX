@@ -10,7 +10,7 @@ import pytest
 from cordon.core import elf, util
 from cordon.core.errors import ConfigError, SafetyError
 from cordon.core.models import LauncherSettings, ModEntry, Profile
-from cordon.core.paths import AppPaths, PROFILE_MARKER, guard_owned_directory, read_marker, write_marker
+from cordon.core.paths import PROFILE_MARKER, AppPaths, guard_owned_directory, read_marker, write_marker
 from cordon.core.settings import SettingsStore
 
 

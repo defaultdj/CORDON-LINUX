@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 
 import pytest
+from support import VANILLA_FSGAME, FakeInstall, make_elf  # noqa: F401  (re-exported for tests)
 
 from cordon.core import util
 from cordon.core.models import LauncherSettings
 from cordon.core.paths import AppPaths
-from support import VANILLA_FSGAME, FakeInstall, make_elf  # noqa: F401  (re-exported for tests)
 
 __all__ = ["make_elf", "VANILLA_FSGAME"]
 
@@ -68,5 +68,5 @@ def fake_install(tmp_path) -> FakeInstall:
 
 
 @pytest.fixture()
-def fake_profile(fake_install) -> "object":
+def fake_profile(fake_install) -> object:
     return fake_install.profile()

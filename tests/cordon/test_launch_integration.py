@@ -14,7 +14,6 @@ import pytest
 
 from cordon import cli
 from cordon.core import launch, util
-from cordon.core.models import Profile
 
 TRUE_BINARY = shutil.which("true") or "/bin/true"
 

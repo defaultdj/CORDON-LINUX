@@ -33,9 +33,9 @@ from .errors import OverlayError, SafetyError
 from .layers import WRITABLE_GAME_PATHS, LayerPlan
 from .models import BACKEND_DIRECT, BACKEND_FUSE, BACKEND_LINK, Profile
 from .paths import (
-    AppPaths,
     PROFILE_MARKER,
     PROFILE_ROOT_MARKER,
+    AppPaths,
     guard_owned_directory,
     read_marker,
     write_marker,
@@ -295,7 +295,7 @@ class ProfileWorkspace:
             self._symlink(source, link)
             created += 1
         # Mod-provided root entries (db/mods/*.db, patches/…, custom folders) win over the game.
-        for relative, providers in plan.entries.items():
+        for relative in plan.entries:
             if relative.startswith(f"{xray.GAME_DATA_DIR}/") or "/" not in relative:
                 if not relative.startswith("db/") and "/" in relative:
                     continue
@@ -327,7 +327,7 @@ class ProfileWorkspace:
         links = 0
         copies: set[str] = set()
         total = sum(1 for relative in plan.entries if relative.startswith(prefix))
-        for index, (relative, providers) in enumerate(plan.entries.items()):
+        for index, relative in enumerate(plan.entries):
             if not relative.startswith(prefix):
                 continue
             if progress and index % 5000 == 0:

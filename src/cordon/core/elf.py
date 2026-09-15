@@ -168,6 +168,5 @@ def arch_matches_host(info: BinaryInfo) -> bool:
     host = host_machine()
     if info.machine == host:
         return True
-    if host in ("x86_64", "aarch64") and info.machine in ("i386", "arm"):
-        return True  # multilib / 32-bit compatibility, validated by the preflight checks
-    return False
+    # multilib / 32-bit compatibility, validated by the preflight checks
+    return host in ("x86_64", "aarch64") and info.machine in ("i386", "arm")

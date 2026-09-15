@@ -7,8 +7,9 @@ import zipfile
 
 import pytest
 
-from cordon.core import diagnostics, engine as engine_mod, mods, preflight, util, xray
-from cordon.core.models import ModEntry, Profile
+from cordon.core import diagnostics, mods, preflight, util, xray
+from cordon.core import engine as engine_mod
+from cordon.core.models import Profile
 
 
 def _pe_stub(path: str) -> str:

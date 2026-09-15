@@ -10,7 +10,8 @@ import os
 import shutil
 from dataclasses import dataclass, field
 
-from . import audit, elf, engine as engine_mod, mounts, util, xray
+from . import audit, elf, mounts, util, xray
+from . import engine as engine_mod
 from .layers import LayerPlan
 from .models import BACKEND_FUSE, BACKEND_LINK, Profile
 from .overlay import ProfileWorkspace

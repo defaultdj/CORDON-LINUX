@@ -124,9 +124,7 @@ def analyze(plan: LayerPlan) -> ConflictReport:
                 status.losing += 1
 
     for status in report.per_mod.values():
-        if status.provided == 0:
-            status.status = STATUS_CONFLICT_FREE
-        elif status.losing == 0 and status.overriding == 0:
+        if status.provided == 0 or status.losing == 0 and status.overriding == 0:
             status.status = STATUS_CONFLICT_FREE
         elif status.winning == 0:
             status.status = STATUS_REDUNDANT

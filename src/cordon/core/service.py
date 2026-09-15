@@ -12,8 +12,9 @@ import shutil
 import time
 from dataclasses import dataclass, field
 
-from . import audit, conflicts, diagnostics, engine as engine_mod, launcherlog, layers, mods as mods_mod
-from . import preflight, util, xray
+from . import audit, conflicts, diagnostics, launcherlog, layers, preflight, util, xray
+from . import engine as engine_mod
+from . import mods as mods_mod
 from .errors import ProfileError
 from .models import BACKEND_LINK, Profile
 from .overlay import ProfileWorkspace

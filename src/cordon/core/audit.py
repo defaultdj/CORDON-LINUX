@@ -67,9 +67,9 @@ class CaseIssue:
         actual_parts = self.actual.split("/")
         if len(referenced_parts) != len(actual_parts):
             return "", ""
-        if any(left.lower() != right.lower() for left, right in zip(referenced_parts, actual_parts)):
+        if any(left.lower() != right.lower() for left, right in zip(referenced_parts, actual_parts, strict=True)):
             return "", ""
-        for index, (reference_part, actual_part) in enumerate(zip(referenced_parts, actual_parts)):
+        for index, (reference_part, actual_part) in enumerate(zip(referenced_parts, actual_parts, strict=True)):
             if reference_part != actual_part:
                 return "/".join(referenced_parts[: index + 1]), actual_part
         return "", ""

@@ -8,7 +8,6 @@ from the command line.
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 
 
@@ -85,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     service = CordonService(paths, logger=logger)
     try:
-        result = service.load()
+        service.load()
     except CordonError as exc:
         QMessageBox.critical(None, "CordonIX", str(exc))
         return 1

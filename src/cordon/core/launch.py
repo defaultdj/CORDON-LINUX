@@ -22,7 +22,8 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from . import diagnostics, engine as engine_mod, layers, preflight, util, xray
+from . import diagnostics, layers, preflight, util, xray
+from . import engine as engine_mod
 from .errors import LaunchError
 from .layers import LayerPlan
 from .models import BACKEND_FUSE, LaunchPlan, Profile

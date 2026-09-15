@@ -6,7 +6,7 @@ import json
 import os
 
 from cordon.core import audit, layers, preflight, util
-from cordon.core.models import BACKEND_DIRECT, BACKEND_FUSE, ModEntry, Profile
+from cordon.core.models import BACKEND_DIRECT, BACKEND_FUSE, ModEntry
 from cordon.core.overlay import ProfileWorkspace
 
 
@@ -108,7 +108,6 @@ def test_audit_plan_finds_case_mismatch(fake_install, fake_profile):
 
 
 def test_audit_fix_creates_alias_and_remembers_it(fake_install, fake_profile, tmp_path):
-    workspace_root = str(tmp_path / "profile")
     # the overlay must exist for the alias to be created inside it
     mod = _case_broken_mod(fake_install.root)
     fake_profile.mods = [ModEntry(id="case", name="Регистр", path=mod)]

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
     QMainWindow,
     QMessageBox,
     QPlainTextEdit,
@@ -25,10 +24,10 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
-from ..core import audit, conflicts, diagnostics, engine as engine_mod, launcherlog, layers, mods as mods_mod
-from ..core import preflight, util
+from ..core import diagnostics, layers, preflight, util, xray
+from ..core import mods as mods_mod
 from ..core.errors import CordonError
-from ..core.models import BACKEND_FUSE, ENGINE_FLAG_LABELS, Profile
+from ..core.models import Profile
 from ..core.service import CordonService
 from . import geometry as geometry_mod
 from . import theme as theme_mod

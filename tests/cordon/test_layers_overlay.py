@@ -5,14 +5,13 @@ from __future__ import annotations
 import os
 
 import pytest
+from support import VANILLA_FSGAME
 
 from cordon.core import fsgame as fsgame_mod
 from cordon.core import layers, util, xray
 from cordon.core.errors import ConfigError
 from cordon.core.models import BACKEND_FUSE, BACKEND_LINK, ModEntry, Profile
 from cordon.core.overlay import MANIFEST_NAME, ProfileWorkspace
-
-from support import VANILLA_FSGAME
 
 
 # ---------------------------------------------------------------------------- fsgame

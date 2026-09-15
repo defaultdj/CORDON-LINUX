@@ -9,8 +9,7 @@ import pytest
 from cordon import cli
 from cordon.core import engine as engine_mod
 from cordon.core import launch, mo2, util
-from cordon.core.models import BACKEND_FUSE, ModEntry, Profile
-from cordon.core.paths import AppPaths
+from cordon.core.models import ModEntry, Profile
 from cordon.core.service import CordonService
 
 

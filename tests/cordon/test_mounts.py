@@ -16,6 +16,7 @@ import subprocess
 import pytest
 
 from cordon.core import layers, mounts, util
+from cordon.core.errors import OverlayError, SafetyError
 
 
 def test_is_mounted_only_for_real_mount_points(fake_install, tmp_path):
@@ -71,9 +72,7 @@ def test_mount_prepares_directories(fake_install, fake_profile, tmp_path):
 
 
 def test_mount_without_layers_raises(fake_install, tmp_path):
-    from cordon.core.errors import OverlayError
 
-    plan = layers.build_plan(fake_install.profile(), engine_data_path="")
     overlay = mounts.OverlayMount(
         mount_point=str(tmp_path / "gamedata"),
         upper_dir=str(tmp_path / "u"),
@@ -172,7 +171,7 @@ def test_unmount_ignores_missing_tools(monkeypatch, tmp_path):
         raise FileNotFoundError(2, "No such file or directory", command[0])
 
     monkeypatch.setattr(mounts.subprocess, "run", fake_run)
-    with pytest.raises(Exception):
+    with pytest.raises(OverlayError):
         overlay.unmount()
     state["mounted"] = False
     overlay.unmount()  # nothing is mounted any more → silent no-op
@@ -227,5 +226,5 @@ def test_paths_written_to_the_engine_are_posix(fake_install, fake_profile):
     # game-relative paths are normalised to the slash form, the engine gets backslashes
     assert util.to_posix("gamedata\\configs\\system.ltx") == "gamedata/configs/system.ltx"
     assert util.to_engine("gamedata/configs/system.ltx") == "gamedata\\configs\\system.ltx"
-    with pytest.raises(Exception):
+    with pytest.raises(SafetyError):
         util.to_posix("../../etc/passwd")

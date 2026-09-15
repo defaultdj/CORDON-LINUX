@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections import deque
 from logging.handlers import RotatingFileHandler
 

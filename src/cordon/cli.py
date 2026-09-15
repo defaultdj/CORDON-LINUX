@@ -13,20 +13,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sys
 
 from . import __version__
-from .core import audit, conflicts, diagnostics, launcherlog, layers
-from .core import preflight, util, xray
+from .core import audit, conflicts, launcherlog, preflight, util, xray
 from .core import engine as engine_mod
 from .core import mods as mods_mod
 from .core.errors import CordonError
-from .core.launch import describe_launch, finish_session, open_in_file_manager, run_profile, start_session
+from .core.launch import describe_launch, open_in_file_manager, run_profile, start_session
 from .core.models import BACKEND_DIRECT, BACKEND_FUSE, BACKEND_LINK, GAME_IDS
 from .core.paths import AppPaths
 from .core.service import CordonService
-
 
 EXIT_OK = 0
 EXIT_ERROR = 1
