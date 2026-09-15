@@ -303,3 +303,82 @@ def test_find_engine_keeps_the_game_as_data_root_when_it_has_shaders(fake_instal
     info = engine_mod.find_engine(fake_profile)
     assert info is not None
     assert info.data_root == util.norm(fake_install.game), "собственные шейдеры игры не подменяются"
+
+
+# ---------------------------------------------------------------- runner selection
+def _native_stub(monkeypatch, tmp_path) -> str:
+    """Pretend a system OpenXRay is installed (what ``select_engines`` treats as the native engine)."""
+    from support import make_elf
+
+    native = make_elf(str(tmp_path / "usr" / "games" / "xr_3da"))
+    monkeypatch.setattr(engine_mod, "detect_system_binary", lambda: native)
+    monkeypatch.setattr(engine_mod, "detect_system_data_root", lambda: "")
+    return util.norm(native)
+
+
+def test_select_engines_auto_prefers_native_and_keeps_exe_as_fallback(fake_install, fake_profile, monkeypatch, tmp_path):
+    exe = _pe_stub(os.path.join(fake_install.game, "bin", "xrEngine.exe"))
+    fake_profile.executable_source = exe
+    native = _native_stub(monkeypatch, tmp_path)
+
+    active, fallback = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_AUTO)
+    assert active is not None and active.executable == native
+    assert fallback is not None and fallback.executable == util.norm(exe)
+
+
+def test_select_engines_auto_respects_disabled_fallback(fake_install, fake_profile, monkeypatch, tmp_path):
+    exe = _pe_stub(os.path.join(fake_install.game, "bin", "xrEngine.exe"))
+    fake_profile.executable_source = exe
+    fake_profile.auto_proton_fallback = False
+    _native_stub(monkeypatch, tmp_path)
+
+    active, fallback = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_AUTO)
+    assert active is not None and active.executable == util.norm(exe)
+    assert fallback is None
+
+
+def test_select_engines_proton_forces_the_exe(fake_install, fake_profile, monkeypatch, tmp_path):
+    exe = _pe_stub(os.path.join(fake_install.game, "bin", "xrEngine.exe"))
+    fake_profile.executable_source = exe
+    _native_stub(monkeypatch, tmp_path)
+
+    active, fallback = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_PROTON)
+    assert active is not None and active.executable == util.norm(exe)
+    assert fallback is None
+
+
+def test_select_engines_proton_finds_exe_next_to_a_native_profile(fake_install, fake_profile):
+    """Profile points at xr_3da, but the build also ships an .exe — forcing Proton must find it."""
+    from support import make_elf
+
+    fake_profile.executable_source = make_elf(os.path.join(fake_install.game, "bin", "xr_3da"))
+    exe = _pe_stub(os.path.join(fake_install.game, "bin", "xrEngine.exe"))
+
+    active, fallback = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_PROTON)
+    assert active is not None and active.executable == util.norm(exe)
+    assert fallback is None
+
+
+def test_select_engines_native_never_falls_back(fake_install, fake_profile, monkeypatch, tmp_path):
+    exe = _pe_stub(os.path.join(fake_install.game, "bin", "xrEngine.exe"))
+    fake_profile.executable_source = exe
+    native = _native_stub(monkeypatch, tmp_path)
+
+    active, fallback = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_NATIVE)
+    assert active is not None and active.executable == native
+    assert fallback is None
+
+
+def test_select_engines_returns_none_when_forced_mode_has_no_candidate(fake_install, fake_profile, monkeypatch):
+    from support import make_elf
+
+    fake_profile.executable_source = make_elf(os.path.join(fake_install.game, "bin", "xr_3da"))
+    monkeypatch.setattr(engine_mod, "detect_system_binary", lambda: "")
+
+    active, fallback = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_PROTON)
+    assert active is None and fallback is None
+
+
+def test_select_engines_rejects_unknown_mode(fake_profile):
+    with pytest.raises(ValueError):
+        engine_mod.select_engines(fake_profile, "steam")

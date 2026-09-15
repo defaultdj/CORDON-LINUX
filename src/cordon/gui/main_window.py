@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from .. import __version__
 from ..core import diagnostics, layers, preflight, util, xray
+from ..core import engine as engine_mod
 from ..core import mods as mods_mod
 from ..core.errors import CordonError
 from ..core.models import Profile
@@ -193,6 +194,18 @@ class MainWindow(QMainWindow):
         action("Поиск архивов", self.scan_archives_dialog, "", "Сканировать каталог на наличие архивов модов")
         action("Установить архив", self.install_archive, "Ctrl+I", "Установить мод из архива")
         action("Импорт MO2", self.import_mo2, "", "Импортировать порядок модов из Mod Organizer 2")
+        action(
+            "Запустить через Proton/Wine",
+            lambda: self.launch_profile(runner=engine_mod.RUNNER_PROTON),
+            "Shift+F9",
+            "Принудительно запустить Windows .exe сборки через Proton/Wine, минуя нативный OpenXRay",
+        )
+        action(
+            "Запустить только нативно",
+            lambda: self.launch_profile(runner=engine_mod.RUNNER_NATIVE),
+            "Ctrl+F9",
+            "Запустить только нативный OpenXRay без автоматического переключения на Proton/Wine",
+        )
         action("Собрать", self.prepare_profile, "F5", "Собрать оверлей профиля")
         action("Проверить", self.run_checks, "F6", "Предполётные проверки")
         action("Конфликты", self.show_conflicts, "Ctrl+K", "Показать конфликты файлов")
@@ -219,7 +232,13 @@ class MainWindow(QMainWindow):
                 self.actions_map["Проверить"],
                 None,
             ]
-        profile_entries += [self.actions_map["Дублировать"], self.actions_map["Удалить"]]
+        profile_entries += [
+            self.actions_map["Запустить через Proton/Wine"],
+            self.actions_map["Запустить только нативно"],
+            None,
+            self.actions_map["Дублировать"],
+            self.actions_map["Удалить"],
+        ]
         menu_button(
             "Профиль",
             profile_entries,
@@ -263,6 +282,14 @@ class MainWindow(QMainWindow):
         self.launch_action.triggered.connect(self.launch_profile)
         self.addAction(self.launch_action)
         layout.addWidget(self.launch_button)
+
+        self.launch_menu = make_menu_button(
+            "▾",
+            [self.actions_map["Запустить через Proton/Wine"], self.actions_map["Запустить только нативно"]],
+            tooltip="Другие способы запуска: принудительно через Proton/Wine или только нативный OpenXRay",
+        )
+        self.launch_menu.setObjectName("primary")
+        layout.addWidget(self.launch_menu)
 
         self.stop_button = make_button("◼  Остановить")
         self.stop_button.setEnabled(False)
@@ -449,6 +476,7 @@ class MainWindow(QMainWindow):
             self.status_strip.detail.setText("Нажмите «Новый профиль», чтобы начать")
             self.mod_table.setRowCount(0)
             self.launch_button.setEnabled(False)
+            self.launch_menu.setEnabled(False)
             return
         if not self.profile_list.current_profile_id():
             self.profile_list.setCurrentRow(0)
@@ -485,10 +513,12 @@ class MainWindow(QMainWindow):
         profile = self.current_profile()
         if profile is None:
             self.launch_button.setEnabled(False)
+            self.launch_menu.setEnabled(False)
             return
         self.settings.selected_profile_id = profile.id
         self.service.save()
         self.launch_button.setEnabled(self._session_thread is None)
+        self.launch_menu.setEnabled(self._session_thread is None)
         self._update_mod_table(profile)
         self.hint_label.setText(
             self._mod_hint(profile.is_standalone)
@@ -973,12 +1003,20 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Отчёт", f"Отчёт сохранён:\n{path}")
 
     # ------------------------------------------------------------------ launch
-    def launch_profile(self) -> None:
+    def launch_profile(self, *, runner: str = engine_mod.RUNNER_AUTO) -> None:
         profile = self.current_profile()
         if profile is None or self._session_thread is not None:
             return
+        if runner != engine_mod.RUNNER_AUTO:
+            active, _fallback = engine_mod.select_engines(profile, runner)
+            if active is None:
+                self._error(
+                    f"Режим «{engine_mod.RUNNER_LABELS[runner]}»: подходящий исполняемый файл не найден.\n"
+                    "Проверьте каталог игры/движка в настройках профиля."
+                )
+                return
         if profile.is_standalone:
-            self._start_session(profile, force=False)
+            self._start_session(profile, force=False, runner=runner)
             return
 
         def work(progress):
@@ -1001,18 +1039,21 @@ class MainWindow(QMainWindow):
                 )
                 if answer != QMessageBox.Yes:
                     return
-            self._start_session(profile, force=False)
+            self._start_session(profile, force=False, runner=runner)
 
         self._run_task("Подготовка запуска…", work, done)
 
-    def _start_session(self, profile: Profile, *, force: bool) -> None:
+    def _start_session(self, profile: Profile, *, force: bool, runner: str = engine_mod.RUNNER_AUTO) -> None:
         self.log_view.clear()
         self.tabs.setCurrentWidget(self.log_view.parentWidget().parentWidget())
         self.progress.setVisible(True)
         self.launch_button.setEnabled(False)
+        self.launch_menu.setEnabled(False)
         self.stop_button.setEnabled(True)
 
-        thread = SessionThread(profile, self.service.app, service=self.service, force_rebuild=force, parent=self)
+        thread = SessionThread(
+            profile, self.service.app, service=self.service, force_rebuild=force, runner=runner, parent=self
+        )
         thread.line.connect(self._append_game_line)
         thread.started.connect(self._on_game_started)
         thread.finished.connect(self._on_game_finished)
@@ -1058,6 +1099,7 @@ class MainWindow(QMainWindow):
         self._stop_presence()
         self.progress.setVisible(False)
         self.launch_button.setEnabled(True)
+        self.launch_menu.setEnabled(True)
         self.stop_button.setEnabled(False)
         self.statusBar().showMessage(f"Игра завершилась с кодом {code} за {util.human_duration(duration)}")
         self._log(f"Процесс завершён: код {code}, время сессии {util.human_duration(duration)}")
@@ -1072,6 +1114,7 @@ class MainWindow(QMainWindow):
         self._stop_presence()
         self.progress.setVisible(False)
         self.launch_button.setEnabled(True)
+        self.launch_menu.setEnabled(True)
         self.stop_button.setEnabled(False)
         self._error(f"Не удалось запустить игру: {message}")
 

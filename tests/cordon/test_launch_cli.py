@@ -236,6 +236,12 @@ def test_cli_full_cycle(isolated_cli_env, fake_install, capsys):
     output = capsys.readouterr().out
     assert "-fsltx" in output and "-overlaypath" in output
 
+    # --runner native keeps working for a native profile, --runner proton has nothing to run
+    assert cli.main(["launch", "Тест CLI", "--dry-run", "--runner", "native"]) == cli.EXIT_OK
+    assert "-fsltx" in capsys.readouterr().out
+    assert cli.main(["launch", "Тест CLI", "--dry-run", "--skip-check", "--runner", "proton"]) != cli.EXIT_OK
+    assert "не найден" in capsys.readouterr().err
+
     assert cli.main(["doctor", "Тест CLI"]) == cli.EXIT_OK
     assert "Готов к запуску" in capsys.readouterr().out
 

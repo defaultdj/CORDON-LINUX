@@ -38,12 +38,13 @@ class SessionThread(QThread):
     finished = Signal(int, float)
     failed = Signal(str)
 
-    def __init__(self, profile, app, *, service, force_rebuild: bool = False, parent=None) -> None:
+    def __init__(self, profile, app, *, service, force_rebuild: bool = False, runner: str = "auto", parent=None) -> None:
         super().__init__(parent)
         self._profile = profile
         self._app = app
         self._service = service
         self._force = force_rebuild
+        self._runner = runner
         self._session = None
         self._stop_requested = False
 
@@ -51,25 +52,18 @@ class SessionThread(QThread):
         from ..core import engine as engine_mod
         from ..core.launch import finish_session, start_session
 
-        target_engine = engine_mod.find_engine(self._profile)
-        native_engine = (
-            engine_mod.find_native_fallback_engine(self._profile)
-            if getattr(self._profile, "prefer_native_openxray", True)
-            else None
-        )
-
-        use_native_first = (
-            native_engine is not None
-            and target_engine is not None
-            and target_engine.executable.lower().endswith(".exe")
-            and getattr(self._profile, "auto_proton_fallback", True)
-        )
-
-        active_engine = native_engine if use_native_first else target_engine
+        active_engine, fallback_engine = engine_mod.select_engines(self._profile, self._runner)
+        if self._runner != engine_mod.RUNNER_AUTO and active_engine is None:
+            self.failed.emit(
+                f"режим «{engine_mod.RUNNER_LABELS[self._runner]}»: подходящий исполняемый файл не найден"
+            )
+            return
 
         try:
-            if use_native_first:
+            if fallback_engine is not None:
                 self.line.emit(f"… 🚀 Попытка нативного запуска через OpenXRay ({active_engine.executable})")
+            elif self._runner == engine_mod.RUNNER_PROTON:
+                self.line.emit(f"… 🍷 Принудительный запуск через Proton/Wine ({active_engine.executable})")
             self._session = start_session(
                 self._profile,
                 self._app,
@@ -89,14 +83,10 @@ class SessionThread(QThread):
 
         outcome = finish_session(self._session, self._app, logger=self._service.logger)
 
-        fallback_engine = None
-        if outcome.crashed and not self._stop_requested and getattr(self._profile, "auto_proton_fallback", True):
-            if use_native_first and target_engine and target_engine.executable.lower().endswith(".exe"):
-                fallback_engine = target_engine
-            elif active_engine and not active_engine.executable.lower().endswith(".exe"):
-                fallback_engine = engine_mod.find_windows_fallback_engine(self._profile)
+        if not outcome.crashed or self._stop_requested:
+            fallback_engine = None
 
-        if fallback_engine is not None and not self._stop_requested:
+        if fallback_engine is not None:
             self.line.emit(
                 f"⚠️ Запуск нативного OpenXRay завершился с ошибкой (код {outcome.returncode}). "
                 f"Автоматический переключатель на Proton/Wine ({fallback_engine.executable})..."

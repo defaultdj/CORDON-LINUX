@@ -91,7 +91,9 @@ env = parent env + engine dir in LD_LIBRARY_PATH (only when .so files sit next t
   Proton from `$PATH` or Steam (`steamapps/common/Proton*`, Proton GE) is preferred, `wine64`/`wine`
   is the fallback. `run_launch()` tries a native OpenXRay first when one is available and
   `Profile.auto_proton_fallback` is set; if that session crashes, the `.exe` is relaunched through
-  Proton/Wine in the same prepared workspace.
+  Proton/Wine in the same prepared workspace. The decision lives in `engine.select_engines(profile,
+  runner)` (`auto` / `native` / `proton`) and is shared by the CLI (`launch --runner`) and the GUI
+  (`SessionThread`), so the two front ends cannot drift apart.
 
 ## 4. Linux-specific invariants
 

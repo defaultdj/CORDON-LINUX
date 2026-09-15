@@ -361,36 +361,20 @@ def run_profile(
     progress: ProgressCallback = None,
     line_callback: LineCallback = None,
     logger=None,
+    runner: str = engine_mod.RUNNER_AUTO,
 ) -> LaunchOutcome | LaunchPlan:
     """Blocking convenience wrapper used by the CLI and the tests."""
+    active_engine, fallback_engine = engine_mod.select_engines(profile, runner)
+    if runner != engine_mod.RUNNER_AUTO and active_engine is None:
+        raise LaunchError(f"режим «{engine_mod.RUNNER_LABELS[runner]}»: подходящий исполняемый файл не найден")
+
     if dry_run:
         launch_plan, _workspace, _info = prepare_launch(
-            profile, app, force_rebuild=force_rebuild, progress=progress, logger=logger
+            profile, app, force_rebuild=force_rebuild, progress=progress, logger=logger, engine=active_engine
         )
         return launch_plan
 
-    target_engine = engine_mod.find_engine(profile)
-    native_engine = (
-        engine_mod.find_native_fallback_engine(profile)
-        if getattr(profile, "prefer_native_openxray", True)
-        else None
-    )
-
-    fallback_engine = None
-    if (
-        native_engine
-        and target_engine
-        and target_engine.executable.lower().endswith(".exe")
-        and getattr(profile, "auto_proton_fallback", True)
-    ):
-        active_engine = native_engine
-        fallback_engine = target_engine
-    else:
-        active_engine = target_engine
-        if target_engine and not target_engine.executable.lower().endswith(".exe") and getattr(profile, "auto_proton_fallback", True):
-            fallback_engine = engine_mod.find_windows_fallback_engine(profile)
-
-    if active_engine and active_engine != target_engine and logger:
+    if fallback_engine is not None and logger:
         logger.info("🚀 [Нативный запуск] Попытка запуска через системный OpenXRay (%s)...", active_engine.executable)
 
     session = start_session(

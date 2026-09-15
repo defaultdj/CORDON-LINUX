@@ -273,6 +273,53 @@ def find_native_fallback_engine(profile: Profile) -> EngineInfo | None:
     )
 
 
+RUNNER_AUTO = "auto"
+RUNNER_NATIVE = "native"
+RUNNER_PROTON = "proton"
+RUNNER_MODES = (RUNNER_AUTO, RUNNER_NATIVE, RUNNER_PROTON)
+RUNNER_LABELS = {
+    RUNNER_AUTO: "автоматически (нативный OpenXRay, при сбое — Proton/Wine)",
+    RUNNER_NATIVE: "только нативный OpenXRay",
+    RUNNER_PROTON: "только Proton/Wine (.exe)",
+}
+
+
+def _is_exe(info: EngineInfo | None) -> bool:
+    return bool(info) and info.executable.lower().endswith(".exe")
+
+
+def select_engines(profile: Profile, runner: str = RUNNER_AUTO) -> tuple[EngineInfo | None, EngineInfo | None]:
+    """Decide which engine starts first and which one (if any) is the crash fallback.
+
+    ``auto`` — the profile's engine; when it is a Windows ``.exe`` and a system OpenXRay exists
+    (and the profile allows it), the native engine goes first and the ``.exe`` becomes the
+    fallback. ``native`` — never touch Proton/Wine. ``proton`` — force the Windows ``.exe``
+    through Proton/Wine even when a native engine is available (for builds that need their DLLs).
+    """
+    if runner not in RUNNER_MODES:
+        raise ValueError(f"неизвестный режим запуска: {runner}")
+    target = find_engine(profile)
+
+    if runner == RUNNER_PROTON:
+        if _is_exe(target):
+            return target, None
+        return find_windows_fallback_engine(profile), None
+
+    if runner == RUNNER_NATIVE:
+        if target is not None and not _is_exe(target):
+            return target, None
+        return find_native_fallback_engine(profile), None
+
+    auto_fallback = getattr(profile, "auto_proton_fallback", True)
+    native = find_native_fallback_engine(profile) if getattr(profile, "prefer_native_openxray", True) else None
+    if native is not None and _is_exe(target) and auto_fallback:
+        return native, target
+    fallback = None
+    if target is not None and not _is_exe(target) and auto_fallback:
+        fallback = find_windows_fallback_engine(profile)
+    return target, fallback
+
+
 def find_windows_fallback_engine(profile: Profile) -> EngineInfo | None:
     """Find Windows .exe engine candidate in the profile's game/engine paths for Proton/Wine fallback."""
     game_root = util.norm(profile.game_path) if profile.game_path else ""

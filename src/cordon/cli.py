@@ -135,6 +135,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_launch.add_argument("--detach", action="store_true", help="не ждать выхода игры")
     p_launch.add_argument("--skip-check", action="store_true", help="не выполнять предполётные проверки")
     p_launch.add_argument("--presence", action="store_true", help="Discord Rich Presence для этой сессии")
+    p_launch.add_argument(
+        "--runner",
+        choices=("auto", "native", "proton"),
+        default="auto",
+        help="auto — нативный OpenXRay с фолбэком на Proton/Wine; native — только OpenXRay; "
+        "proton — принудительно .exe через Proton/Wine",
+    )
 
     p_doctor = sub.add_parser("doctor", help="проверки готовности профиля")
     p_doctor.add_argument("profile", nargs="?")
@@ -496,16 +503,25 @@ def cmd_launch(args, service: CordonService) -> int:
             print("\nЗапуск заблокирован. Исправьте ошибки или используйте --skip-check.", file=sys.stderr)
             return EXIT_BLOCKED
     if args.dry_run:
-        plan = run_profile(profile, service.app, dry_run=True, force_rebuild=args.force, logger=service.logger)
+        plan = run_profile(
+            profile, service.app, dry_run=True, force_rebuild=args.force, logger=service.logger, runner=args.runner
+        )
         print(describe_launch(plan))
         return EXIT_OK
     if args.detach:
+        from .core import engine as engine_mod
+
+        detach_engine, _fallback = engine_mod.select_engines(profile, args.runner)
+        if args.runner != engine_mod.RUNNER_AUTO and detach_engine is None:
+            print(f"Режим «{engine_mod.RUNNER_LABELS[args.runner]}»: подходящий исполняемый файл не найден", file=sys.stderr)
+            return EXIT_ERROR
         session = start_session(
             profile,
             service.app,
             force_rebuild=args.force,
             progress=lambda text: print(f"  {text}"),
             logger=service.logger,
+            engine=detach_engine,
         )
         print(f"Игра запущена (pid {session.process.pid}), журнал: {session.log_path}")
         print("Лаунчер не будет ждать завершения игры.")
@@ -523,6 +539,7 @@ def cmd_launch(args, service: CordonService) -> int:
             force_rebuild=args.force,
             logger=service.logger,
             progress=lambda text: print(f"  {text}"),
+            runner=args.runner,
         )
     finally:
         if presence:
