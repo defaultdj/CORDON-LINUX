@@ -237,15 +237,7 @@ class ProfileDialog(QDialog):
         options = dict(WINE_OPTION_DEFAULTS)
         options.update(getattr(profile, "wine_options", {}) or {})
         box = QGroupBox("Proton / Wine: дополнительно (только для Windows-сборок)")
-        box.setCheckable(True)
-        box.setChecked(False)
-        vbox = QVBoxLayout(box)
-        self._wine_body = QWidget()
-        vbox.addWidget(self._wine_body)
-        body = QVBoxLayout(self._wine_body)
-        body.setContentsMargins(0, 0, 0, 0)
-        box.toggled.connect(self._wine_body.setVisible)
-        self._wine_body.setVisible(False)
+        body = QVBoxLayout(box)
         hint = QLabel(
             "Для PortProton эти значения записываются в <exe>.ppdb (PW_*) перед каждым запуском и "
             "перекрывают настройки из его меню. Для Proton/Wine превращаются в переменные окружения."
