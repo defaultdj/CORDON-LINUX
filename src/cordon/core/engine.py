@@ -176,6 +176,14 @@ def find_engine(profile: Profile, *, extra_roots: tuple[str, ...] = ()) -> Engin
     if not executable:
         candidates = candidate_executables(engine_root, game_root, *extra_roots)
         if not candidates:
+            # No native binary next to the game. A Windows build (xrEngine.exe & co) is the
+            # game's *own* engine and must win over a system OpenXRay: the latter would start
+            # against foreign data and die in CEngineAPI::SelectRenderer ("no shaders").
+            windows = candidate_windows_executables(engine_root, game_root, *extra_roots)
+            if windows:
+                candidates = windows
+                source = "Windows-сборка"
+        if not candidates:
             detected = detect_system_binary()
             candidates = [detected] if detected else []
             if candidates:
@@ -325,29 +333,57 @@ def select_engines(profile: Profile, runner: str = RUNNER_AUTO) -> tuple[EngineI
     return target, fallback
 
 
-def find_windows_fallback_engine(profile: Profile) -> EngineInfo | None:
-    """Find Windows .exe engine candidate in the profile's game/engine paths for Proton/Wine fallback."""
-    game_root = util.norm(profile.game_path) if profile.game_path else ""
-    engine_root = util.norm(profile.engine_path) if profile.engine_path else game_root
-    for root in (engine_root, game_root):
+#: Names that are the engine, not an installer/updater/launcher shipped next to it.
+WINDOWS_ENGINE_NAMES = ("xrengine.exe", "xr_3da.exe", "anomalydx11avx.exe", "anomalydx11.exe",
+                        "anomalydx10avx.exe", "anomalydx10.exe", "anomalydx9avx.exe", "anomalydx9.exe",
+                        "anomalydx8avx.exe", "anomalydx8.exe", "stalker-cop.exe", "stalker-cs.exe",
+                        "xrenginex64.exe", "xr_engine.exe")
+WINDOWS_SKIP_PREFIXES = ("unins", "setup", "install", "update", "launcher", "crash", "redist", "vcredist",
+                         "dxsetup", "dxwebsetup", "bugtrap", "dotnet")
+
+
+def candidate_windows_executables(*roots: str) -> list[str]:
+    """Windows engine binaries in the usual subdirectories, engine names first, installers excluded."""
+    found: list[str] = []
+    for root in roots:
         if not root or not os.path.isdir(root):
             continue
-        for sub in ("", "bin", "bin_x64", "engine"):
+        for sub in BINARY_SUBDIRS:
             directory = os.path.join(root, sub) if sub else root
             if not os.path.isdir(directory):
                 continue
             for name in util.entry_names(directory):
-                if name.lower().endswith(".exe"):
-                    candidate = os.path.join(directory, name)
-                    if os.path.isfile(candidate):
-                        binary = elf.inspect(candidate)
-                        return EngineInfo(
-                            executable=util.norm(candidate),
-                            binary=binary,
-                            engine_root=directory,
-                            game_root=game_root,
-                            data_root=game_root,
-                            source="windows fallback .exe",
-                            game_id=profile.game_id,
-                        )
-    return None
+                lowered = name.lower()
+                if not lowered.endswith(".exe") or lowered.startswith(WINDOWS_SKIP_PREFIXES):
+                    continue
+                candidate = os.path.join(directory, name)
+                if os.path.isfile(candidate):
+                    found.append(util.norm(candidate))
+    unique = util.unique(found)
+
+    def rank(path: str) -> tuple[int, int, str]:
+        base = os.path.basename(path).lower()
+        known = WINDOWS_ENGINE_NAMES.index(base) if base in WINDOWS_ENGINE_NAMES else len(WINDOWS_ENGINE_NAMES)
+        return (known, 0 if base.startswith(("xr", "anomaly", "stalker")) else 1, path)
+
+    unique.sort(key=rank)
+    return unique
+
+
+def find_windows_fallback_engine(profile: Profile) -> EngineInfo | None:
+    """Windows .exe engine in the profile's game/engine paths (Proton/Wine target)."""
+    game_root = util.norm(profile.game_path) if profile.game_path else ""
+    engine_root = util.norm(profile.engine_path) if profile.engine_path else game_root
+    candidates = candidate_windows_executables(engine_root, game_root)
+    if not candidates:
+        return None
+    candidate = candidates[0]
+    return EngineInfo(
+        executable=candidate,
+        binary=elf.inspect(candidate),
+        engine_root=os.path.dirname(candidate),
+        game_root=game_root,
+        data_root=game_root,
+        source="Windows-сборка",
+        game_id=profile.game_id,
+    )

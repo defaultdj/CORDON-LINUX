@@ -399,3 +399,18 @@ def test_standalone_exe_goes_straight_to_windows_runner(fake_install, fake_profi
     # the explicit "native only" mode still lets the user try the system engine
     forced, _ = engine_mod.select_engines(fake_profile, engine_mod.RUNNER_NATIVE)
     assert forced is not None and forced.executable == native
+
+
+def test_game_exe_wins_over_system_openxray(fake_install, fake_profile, monkeypatch, tmp_path):
+    """Regression: a build with only xrEngine.exe used to resolve to /usr/bin/xr_3da, which then
+    started first and died in CEngineAPI::SelectRenderer before the Proton fallback kicked in."""
+    exe = _pe_stub(os.path.join(fake_install.game, "bin", "xrEngine.exe"))
+    _pe_stub(os.path.join(fake_install.game, "bin", "unins000.exe"))  # installer leftovers must be ignored
+    _native_stub(monkeypatch, tmp_path)
+    fake_profile.executable_source = ""
+    fake_profile.executable_relative = "bin/xr_3da"  # default value: nothing like that in the build
+    os.remove(os.path.join(fake_install.game, "bin", "xr_3da"))  # the fixture ships a native stub
+
+    info = engine_mod.find_engine(fake_profile)
+    assert info is not None and info.executable == util.norm(exe), info
+    assert info.binary.kind == "pe"
