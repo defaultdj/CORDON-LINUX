@@ -331,3 +331,42 @@ def test_wine_options_survive_round_trip_and_drop_junk():
     assert profile.wine_options["windows_version"] == "7"
     assert "bogus" not in profile.wine_options
     assert Profile.from_dict(profile.to_dict()).wine_options == profile.wine_options
+
+
+# --------------------------------------------------------------------------- standalone + native
+def test_standalone_native_run_merges_engine_data(fake_install, tmp_path, monkeypatch):
+    """A standalone build on the system OpenXRay needs /usr/share/openxray shaders: overlay + -fsltx."""
+    from cordon.core import elf, layers
+    from cordon.core.engine import EngineInfo
+    from cordon.core.models import Profile
+
+    _isolated_runners(monkeypatch, tmp_path)
+    profile = Profile(id="s1", name="Сборка", kind="standalone", game_path=fake_install.game)
+    profile.normalize()
+    native = EngineInfo(
+        executable=os.path.join(fake_install.game, "bin", "xr_3da"),
+        binary=elf.BinaryInfo(path=os.path.join(fake_install.game, "bin", "xr_3da"), kind="elf", bits=64, machine="x86_64"),
+        engine_root=os.path.join(fake_install.game, "bin"),
+        game_root=fake_install.game,
+        data_root=fake_install.engine_data,
+    )
+    plan = layers.build_plan(profile, engine_data_path=fake_install.engine_data)
+    assert [layer.kind for layer in plan.layers] == ["engine", "game"]
+    assert layers.needs_overlay(profile, plan)
+
+    launch_plan, workspace, _ = launch.prepare_launch(profile, fake_install.store, engine=native)
+    assert os.path.isfile(workspace.fsgame_path)
+    assert "-fsltx" in launch_plan.argv
+    assert launch_plan.cwd == workspace.root
+    assert os.path.exists(os.path.join(workspace.root, "gamedata", "shaders", "gl", "common.h"))
+
+    # the same profile through its own .exe runs in place again and the merged overlay is dropped
+    exe = _fake_exe_info(fake_install)
+    exe.data_root = fake_install.game
+    plan_exe = layers.build_plan(profile, engine_data_path=exe.data_root)
+    assert not layers.needs_overlay(profile, plan_exe)
+    workspace.ensure_root()
+    assert os.path.isfile(workspace.manifest_path)
+    with pytest.raises(launch.LaunchError):  # no Wine in the isolated PATH — but the overlay reset happens first
+        launch.prepare_launch(profile, fake_install.store, engine=exe)
+    assert not os.path.isfile(workspace.manifest_path) and not os.path.isfile(workspace.fsgame_path)

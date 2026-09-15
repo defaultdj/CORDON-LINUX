@@ -202,6 +202,13 @@ def _mapped_mod_entries(layer: LayerSource) -> Iterator[tuple[str, str]]:
         yield util.to_posix(f"db/mods/{name}"), path
 
 
+def needs_overlay(profile: Profile, plan: LayerPlan) -> bool:
+    """Standalone builds run in place unless engine data has to be merged in (native OpenXRay)."""
+    if not profile.is_standalone:
+        return True
+    return any(layer.kind == "engine" for layer in plan.layers)
+
+
 def build_plan(
     profile: Profile,
     *,
@@ -211,13 +218,21 @@ def build_plan(
 ) -> LayerPlan:
     """Create the layer plan for a profile (without indexing it)."""
     plan = LayerPlan(excluded={util.to_posix(path) for path in profile.excluded_paths})
+    engine_data = util.norm(engine_data_path) if engine_data_path else ""
     if profile.is_standalone:
         root = util.norm(profile.game_path)
+        priority = 0
+        # A standalone build started by the *native* OpenXRay still needs the engine's own data
+        # (GL shaders in /usr/share/openxray): without them SelectRenderer() aborts with
+        # "No shaders found for OpenGL". Windows .exe builds report data_root == game root, so
+        # nothing is added for them and the build runs as is.
+        if engine_data and os.path.isdir(engine_data) and root and not util.same_file(engine_data, root):
+            plan.add_layer(LayerSource(kind="engine", name="Данные движка", path=engine_data, priority=priority))
+            priority += 1
         if root:
-            plan.add_layer(LayerSource(kind="game", name="Сборка", path=root, priority=0))
+            plan.add_layer(LayerSource(kind="game", name="Сборка", path=root, priority=priority))
         return plan
 
-    engine_data = util.norm(engine_data_path) if engine_data_path else ""
     game_root = util.norm(game_path or profile.game_path)
     priority = 0
     if engine_data and os.path.isdir(engine_data) and not util.same_file(engine_data, game_root):

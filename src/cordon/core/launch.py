@@ -72,7 +72,10 @@ def build_launch_plan(
 
     # Engine arguments (identical for native and Windows builds; paths are translated below).
     game_args: list[str] = []
-    if profile.is_standalone:
+    # A standalone build launched by the native OpenXRay gets an overlay with the engine's data
+    # merged in (see layers.build_plan) — then it is started exactly like a mods profile.
+    merged_standalone = profile.is_standalone and os.path.isfile(space.manifest_path) and os.path.isfile(space.fsgame_path)
+    if profile.is_standalone and not merged_standalone:
         cwd = util.norm(profile.game_path) or info.engine_root
         if profile.isolate_appdata and os.path.isfile(space.fsgame_path):
             game_args += ["-fsltx", space.fsgame_path]
@@ -276,8 +279,8 @@ def prepare_launch(
     """Build the overlay (if needed) and return the exact command line that *would* be run."""
     info = engine or engine_mod.require_engine(profile)
     workspace = ProfileWorkspace(app, profile, logger=logger)
-    if not profile.is_standalone:
-        layer_plan = plan or layers.build_plan(profile, engine_data_path=info.data_root)
+    layer_plan = plan or layers.build_plan(profile, engine_data_path=info.data_root)
+    if layers.needs_overlay(profile, layer_plan):
         if not layer_plan.entries:
             layer_plan.index(progress)
         workspace.prepare(layer_plan, engine_executable=info.executable, force=force_rebuild, progress=progress)
@@ -292,6 +295,11 @@ def prepare_launch(
                 logger.warning("не удалось применить алиасы регистра: %s", exc)
     else:
         workspace.ensure_root()
+        if profile.is_standalone:
+            # switching back from a native (merged) run: the stale overlay must not be reused
+            for stale in (workspace.manifest_path, workspace.fsgame_path):
+                if os.path.isfile(stale):
+                    os.remove(stale)
     launch_plan = build_launch_plan(profile, app, engine=info, workspace=workspace)
     return launch_plan, workspace, info
 

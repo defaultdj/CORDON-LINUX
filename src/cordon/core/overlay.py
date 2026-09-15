@@ -31,6 +31,7 @@ from . import fsgame as fsgame_mod
 from . import mounts, util, xray
 from .errors import OverlayError, SafetyError
 from .layers import WRITABLE_GAME_PATHS, LayerPlan
+from .layers import needs_overlay as layers_needs_overlay
 from .models import BACKEND_DIRECT, BACKEND_FUSE, BACKEND_LINK, Profile
 from .paths import (
     PROFILE_MARKER,
@@ -176,8 +177,9 @@ class ProfileWorkspace:
         started = time.monotonic()
         result = OverlayResult(root=self.ensure_root(), rebuilt=False)
 
-        if self.profile.backend == BACKEND_DIRECT or self.profile.is_standalone:
-            if not self.profile.is_standalone:
+        in_place = self.profile.is_standalone and not layers_needs_overlay(self.profile, plan)
+        if self.profile.backend == BACKEND_DIRECT or in_place:
+            if not in_place:
                 self.write_fsgame(plan)
             self._prepare_appdata(plan, result)
             result.duration = time.monotonic() - started

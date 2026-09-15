@@ -360,7 +360,9 @@ def _check_paths(profile: Profile, app: AppPaths, report: PreflightReport) -> No
         if source and util.is_inside(source, root):
             report.add(LEVEL_ERROR, "Игра или мод находятся внутри каталога профиля", source,
                        "Это приведёт к рекурсивному вложению ссылок. Выберите другие пути.")
-    if workspace.is_initialised():
+    if profile.is_standalone and not os.path.isfile(workspace.manifest_path):
+        report.add(LEVEL_INFO, "Сборка запускается на месте", "Оверлей нужен только при нативном запуске (данные OpenXRay подмешиваются).")
+    elif workspace.is_initialised():
         problems = workspace.verify()
         if problems:
             report.add(LEVEL_WARNING, "Предыдущая сборка оверлея неполна",
