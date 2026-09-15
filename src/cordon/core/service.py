@@ -14,9 +14,10 @@ from dataclasses import dataclass, field
 
 from . import audit, cleanup, conflicts, diagnostics, launcherlog, layers, preflight, util, xray
 from . import engine as engine_mod
+from . import install as install_mod
 from . import mods as mods_mod
 from .errors import ProfileError
-from .models import BACKEND_LINK, Profile
+from .models import BACKEND_LINK, PROFILE_KIND_STANDALONE, Profile
 from .overlay import ProfileWorkspace
 from .paths import AppPaths
 from .settings import LoadResult, SettingsStore
@@ -135,6 +136,34 @@ class CordonService:
             shutil.rmtree(storage, ignore_errors=True)
         self.logger.info("профиль «%s» удалён (файлы: %s)", profile.name, removed)
         return removed
+
+    def install_build(
+        self,
+        source: str,
+        destination: str,
+        *,
+        name: str = "",
+        runner_preference: str = "auto",
+        progress=None,
+    ) -> tuple[Profile, install_mod.BuildInstallResult]:
+        """Install a standalone build (archive or setup.exe) into *destination* and create its profile."""
+        if install_mod.is_installer(source):
+            result = install_mod.install_from_installer(
+                source,
+                destination,
+                runner_preference=runner_preference,
+                portproton_path=self.settings.portproton_path,
+                progress=progress,
+            )
+        else:
+            result = install_mod.install_from_archive(source, destination, progress=progress)
+        title = name or os.path.basename(result.game_root.rstrip("/")) or mods_mod.archive_stem(source)
+        profile = self.create_profile(title, kind=PROFILE_KIND_STANDALONE, game_path=result.game_root)
+        profile.managed_install = True
+        if result.windows_only:
+            profile.prefer_native_openxray = False
+        self.save()
+        return profile, result
 
     def leftovers_for(self, profile: Profile) -> cleanup.LeftoverReport:
         """What deleting *profile* would leave behind (prefixes, .ppdb, PortProton shortcuts, build)."""

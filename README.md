@@ -115,7 +115,7 @@ cordon launch "Anomaly 1.5.2"                       # Запуск игры
 
 CordonIX автоматически определяет тип бинарников в каталоге игры:
 * **Нативный ELF (`xr_3da`)**: Запускается напрямую в Linux через OpenXRay.
-* **Windows PE (`xrEngine.exe`)**: CordonIX ищет **PortProton**, **Proton** (Steam / Proton GE) или **Wine** и запускает игру в нём; ключи `-fsltx`/`-overlaypath` переводятся в `Z:\…`, для PortProton записываются в `<exe>.ppdb`.
+* **Windows PE (`xrEngine.exe`)**: CordonIX ищет **PortProton**, **Proton** (Steam / Proton GE) или **Wine** и запускает игру в нём; ключи `-fsltx`/`-overlaypath` переводятся в `Z:\…`, для PortProton записываются в `<exe>.ppdb` вместе с настройками Proton/Wine профиля (esync/fsync/ntsync, GameMode, MangoHud, версия Wine, префикс). Сборки можно ставить прямо из лаунчера (архив или `setup.exe`), а при удалении профиля он покажет и предложит убрать остатки (префиксы, `.ppdb`, ярлыки PortProton, сам каталог сборки).
 * **Авто-фолбэк**: При наличии системного OpenXRay лаунчер сначала запускает мод нативно. В случае ошибки скриптов или DLL игра автоматически перезапускается через Proton/Wine.
 * **Ручной выбор**: Меню **▾** рядом с «Запустить» (или `cordon launch --runner proton|native`) принудительно запускает сборку через Proton/Wine либо только нативно — на случай, если автоопределение сбоя не сработало.
 

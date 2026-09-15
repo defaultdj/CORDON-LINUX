@@ -32,7 +32,9 @@ src/cordon/
 │   ├── diagnostics.py log/dump collection and report rendering
 │   ├── discord.py     Discord IPC over the UNIX socket
 │   ├── screenshots.py per-profile screenshot listing and thumbnails
-│   ├── winerun.py     PortProton / Proton / Wine discovery, Z: paths, .ppdb arguments
+│   ├── winerun.py     PortProton / Proton / Wine discovery, Z: paths, .ppdb block, tuning options
+│   ├── install.py     standalone build install (archive unpack / setup.exe via runner)
+│   ├── cleanup.py     leftover scan after profile deletion (prefixes, .ppdb, shortcuts, build)
 │   └── service.py     CordonService: the single entry point for both front ends
 ├── gui/       PySide6 only (theme, widgets, dialogs, worker threads, main window)
 └── cli.py     argparse front end, one handler per command
@@ -98,6 +100,20 @@ env = parent env + engine dir in LD_LIBRARY_PATH (only when .so files sit next t
   Proton/Wine in the same prepared workspace. The decision lives in `engine.select_engines(profile,
   runner)` (`auto` / `native` / `proton`) and is shared by the CLI (`launch --runner`) and the GUI
   (`SessionThread`), so the two front ends cannot drift apart.
+* `Profile.wine_options` (esync/fsync/ntsync, GameMode, MangoHud, inhibit sleep, FSR, LAA, virtual
+  desktop, Windows version, wine/proton version, prefix, `WINEDLLOVERRIDES`, extra env) is applied
+  by `winerun.option_env()` / `option_wrappers()` for Proton and Wine, and by
+  `winerun.ppdb_variables()` for PortProton: the `.ppdb` gets a `# >>> CordonIX … <<<` block at the
+  end (after PortProton's own lines, so it wins) with `PW_*` exports plus `LAUNCH_PARAMETERS`;
+  everything outside the block is preserved.
+* `core/install.py` installs a standalone build: archives are unpacked with `mods.extract_archive`,
+  installers are run through the same runner (`WINEPREFIX`/compat data inside the destination) and
+  the game root is located afterwards. The destination must be empty or already marked; it receives
+  `cleanup.BUILD_MARKER` and the profile gets `managed_install=True`.
+* `core/cleanup.scan()` lists what deleting a profile leaves behind (Proton prefix, `.ppdb`,
+  PortProton prefix/shortcuts/icons, saves inside a private prefix, managed build dir), flags shared
+  items, and `cleanup.remove()` deletes only paths from that scan. Used by the GUI `LeftoversDialog`
+  and `cordon delete --purge`.
 
 ## 4. Linux-specific invariants
 

@@ -98,6 +98,18 @@ def is_managed_build(directory: str) -> bool:
     return bool(directory) and os.path.isfile(os.path.join(directory, BUILD_MARKER))
 
 
+def managed_build_root(directory: str, *, max_up: int = 3) -> str:
+    """The marked install directory containing *directory* (installers often nest the game)."""
+    current = util.norm(directory) if directory else ""
+    for _ in range(max_up + 1):
+        if not current or current == "/":
+            return ""
+        if is_managed_build(current):
+            return current
+        current = os.path.dirname(current)
+    return ""
+
+
 # --------------------------------------------------------------------------- scan
 def scan(profile: Profile, app: AppPaths, *, other_profiles: list[Profile] = (), portproton_path: str = "") -> LeftoverReport:
     """Everything on disk that belongs (or may belong) to *profile*."""
@@ -140,15 +152,23 @@ def scan(profile: Profile, app: AppPaths, *, other_profiles: list[Profile] = (),
         _scan_portproton(report, add, profile, others, pp_root, game, engine_root)
 
     for directory in (game, engine_root):
-        if directory and is_managed_build(directory) and not _used_by(others, directory):
-            add(KIND_BUILD, directory, note="создан лаунчером при установке сборки")
-        elif directory and is_managed_build(directory):
-            add(KIND_BUILD, directory, shared=True, note="используется другим профилем")
+        build_root = managed_build_root(directory)
+        if not build_root:
+            continue
+        if _used_by(others, build_root):
+            add(KIND_BUILD, build_root, shared=True, note="используется другим профилем")
+        else:
+            add(KIND_BUILD, build_root, note="создан лаунчером при установке сборки")
     return report
 
 
-def _used_by(profiles: list[Profile], directory: str) -> bool:
-    return any(util.norm(p.game_path or "") == directory or util.norm(p.engine_path or "") == directory for p in profiles)
+def _used_by(profiles: list[Profile], build_root: str) -> bool:
+    return any(
+        util.is_inside(util.norm(path), build_root)
+        for p in profiles
+        for path in (p.game_path, p.engine_path)
+        if path
+    )
 
 
 def _scan_portproton(report, add, profile: Profile, others: list[Profile], pp_root: str, game: str, engine_root: str) -> None:

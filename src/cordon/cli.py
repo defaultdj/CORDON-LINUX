@@ -65,6 +65,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_new.add_argument("--kind", default="mods", choices=("mods", "standalone"))
     p_new.add_argument("--description", default="")
 
+    p_install = sub.add_parser(
+        "install-build",
+        help="установить standalone-сборку (архив или setup.exe) в каталог и создать профиль",
+    )
+    p_install.add_argument("source", help="архив сборки (.zip/.7z/.rar/.tar.*) или установщик (.exe)")
+    p_install.add_argument("destination", help="пустой или новый каталог для сборки (лаунчер помечает его своим)")
+    p_install.add_argument("--name", default="", help="название профиля (по умолчанию — имя каталога)")
+    p_install.add_argument("--runner", default="auto", choices=("auto", "portproton", "proton", "wine"),
+                           help="через что запускать установщик .exe")
+
     p_duplicate = sub.add_parser("duplicate", help="создать копию профиля")
     p_duplicate.add_argument("profile")
     p_duplicate.add_argument("--name", default="")
@@ -260,6 +270,18 @@ def cmd_new(args, service: CordonService) -> int:
     if game:
         info = engine_mod.find_engine(profile)
         print(f"  {info.describe() if info else 'движок не найден — укажите его в настройках профиля'}")
+    return EXIT_OK
+
+
+def cmd_install_build(args, service: CordonService) -> int:
+    profile, result = service.install_build(
+        args.source, args.destination, name=args.name, runner_preference=args.runner, progress=print
+    )
+    print(f"Создан профиль «{profile.name}» ({profile.id}) → {result.game_root}")
+    for note in result.notes:
+        print(f"  {note}")
+    if result.executables:
+        print("  Windows-движок: " + ", ".join(os.path.relpath(exe, result.game_root) for exe in result.executables[:3]))
     return EXIT_OK
 
 
@@ -783,6 +805,7 @@ COMMANDS = {
     "tools": cmd_tools,
     "list": cmd_list,
     "new": cmd_new,
+    "install-build": cmd_install_build,
     "show": cmd_show,
     "duplicate": cmd_duplicate,
     "delete": cmd_delete,

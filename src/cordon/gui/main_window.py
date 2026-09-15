@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 )
 
 from .. import __version__
-from ..core import diagnostics, layers, preflight, util, xray
+from ..core import diagnostics, layers, preflight, util, winerun, xray
 from ..core import engine as engine_mod
 from ..core import mods as mods_mod
 from ..core.errors import CordonError
@@ -36,6 +36,7 @@ from . import theme as theme_mod
 from .dialogs import (
     AboutDialog,
     ArchiveScannerDialog,
+    InstallBuildDialog,
     LauncherSettingsDialog,
     LeftoversDialog,
     Mo2Dialog,
@@ -196,6 +197,8 @@ class MainWindow(QMainWindow):
             "Ctrl+E",
             "Движок, исполняемый файл, аргументы запуска, каталоги профиля",
         )
+        action("Установить сборку", self.install_build, "Ctrl+Shift+I",
+               "Распаковать архив или запустить setup.exe сборки и создать для неё профиль")
         action("Дублировать", self.duplicate_profile, "", "Копия профиля вместе с модами")
         action("Удалить", self.delete_profile, "Ctrl+Delete", "Удалить профиль")
         action("Добавить моды", self.add_mods, "Ctrl+O", "Добавить папки модов")
@@ -245,6 +248,7 @@ class MainWindow(QMainWindow):
             self.actions_map["Запустить через Proton/Wine"],
             self.actions_map["Запустить только нативно"],
             None,
+            self.actions_map["Установить сборку"],
             self.actions_map["Дублировать"],
             self.actions_map["Удалить"],
         ]
@@ -588,6 +592,34 @@ class MainWindow(QMainWindow):
             return
         self.refresh_profiles(select=clone.id)
         self._log(f"Создана копия: «{clone.name}»")
+
+    def install_build(self) -> None:
+        dialog = InstallBuildDialog(self.service.app, parent=self)
+        if dialog.exec() != InstallBuildDialog.Accepted:
+            return
+        source, destination, name, runner = dialog.values()
+        is_installer = source.lower().endswith((".exe", ".msi"))
+        if is_installer:
+            self._log(
+                "Запускается установщик. Укажите в нём каталог "
+                + winerun.to_windows_path(destination)
+            )
+
+        def work(progress):
+            return self.service.install_build(source, destination, name=name, runner_preference=runner, progress=progress)
+
+        def done(result):
+            profile, outcome = result
+            self.refresh_profiles(select=profile.id)
+            self._log(f"Сборка установлена в {outcome.game_root}; создан профиль «{profile.name}»")
+            for note in outcome.notes:
+                self._log("  " + note)
+            text = f"Профиль «{profile.name}» создан.\n\nКаталог: {outcome.game_root}"
+            if outcome.notes:
+                text += "\n\n" + "\n".join(outcome.notes)
+            self._info("Сборка установлена", text)
+
+        self._run_task("Установка сборки…" if not is_installer else "Ожидание завершения установщика…", work, done)
 
     def delete_profile(self) -> None:
         profile = self.current_profile()

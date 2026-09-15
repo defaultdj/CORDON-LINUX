@@ -821,3 +821,82 @@ class LeftoversDialog(QDialog):
 
     def selected(self) -> list:
         return [item for check, item in self._checks if check.isChecked()]
+
+
+class InstallBuildDialog(QDialog):
+    """Pick a build source (archive or setup.exe) and the directory to install it into."""
+
+    def __init__(self, app: AppPaths, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Установить сборку")
+        screen = geometry_mod.screen_size()
+        self.setMinimumWidth(geometry_mod.fit_width(640, screen))
+        layout = QVBoxLayout(self)
+        intro = QLabel(
+            "Архив распаковывается в выбранный каталог; установщик .exe запускается через PortProton/"
+            "Proton/Wine — в нём укажите тот же каталог (он будет показан как Z:\\…). Каталог должен быть "
+            "пустым или новым: лаунчер помечает его своим и предложит удалить вместе с профилем."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight)
+        self.source_edit = QLineEdit()
+        form.addRow("Архив или установщик", _path_row(self.source_edit, self._pick_source))
+        self.dest_edit = QLineEdit(os.path.join(app.data_dir, "builds"))
+        form.addRow("Каталог установки", _path_row(self.dest_edit, self._pick_destination))
+        self.name_edit = QLineEdit()
+        self.name_edit.setPlaceholderText("по умолчанию — имя каталога сборки")
+        form.addRow("Название профиля", self.name_edit)
+        self.runner_combo = QComboBox()
+        for runner_id, label in WINDOWS_RUNNER_LABELS.items():
+            self.runner_combo.addItem(label, runner_id)
+        form.addRow("Установщик .exe запускать через", self.runner_combo)
+        layout.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("Установить")
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+        self.source_edit.textChanged.connect(self._suggest_destination)
+
+    def _pick_source(self) -> None:
+        pattern = "Сборки (*.exe *.msi *.zip *.7z *.rar *.tar *.tar.gz *.tgz *.tar.xz *.tar.bz2 *.tar.zst);;Все файлы (*)"
+        path, _f = QFileDialog.getOpenFileName(self, "Архив или установщик сборки", os.path.expanduser("~"), pattern)
+        if path:
+            self.source_edit.setText(path)
+
+    def _pick_destination(self) -> None:
+        path = QFileDialog.getExistingDirectory(self, "Каталог установки", self.dest_edit.text() or os.path.expanduser("~"))
+        if path:
+            self.dest_edit.setText(path)
+
+    def _suggest_destination(self, source: str) -> None:
+        base = self.dest_edit.text().strip()
+        if not source or not base:
+            return
+        from ..core import mods as mods_mod
+
+        stem = mods_mod.archive_stem(source) if not source.lower().endswith((".exe", ".msi")) else os.path.splitext(os.path.basename(source))[0]
+        stem = mods_mod.slugify(stem, fallback="build")
+        parent = os.path.dirname(base) if os.path.basename(base) == getattr(self, "_last_stem", None) else base
+        self._last_stem = stem
+        self.dest_edit.setText(os.path.join(parent, stem))
+
+    def _accept(self) -> None:
+        source = self.source_edit.text().strip()
+        if not os.path.isfile(source):
+            QMessageBox.warning(self, "Проверьте данные", "Укажите существующий архив или установщик.")
+            return
+        if not self.dest_edit.text().strip():
+            QMessageBox.warning(self, "Проверьте данные", "Укажите каталог установки.")
+            return
+        self.accept()
+
+    def values(self) -> tuple[str, str, str, str]:
+        return (
+            self.source_edit.text().strip(),
+            self.dest_edit.text().strip(),
+            self.name_edit.text().strip(),
+            self.runner_combo.currentData() or "auto",
+        )
