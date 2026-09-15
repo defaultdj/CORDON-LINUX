@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 )
 
 from ..core import engine as engine_mod
-from ..core import preflight, util, xray
+from ..core import preflight, util, winerun, xray
 from ..core.models import (
     BACKEND_DIRECT,
     BACKEND_FUSE,
@@ -40,6 +40,8 @@ from ..core.models import (
     PROFILE_KIND_MODS,
     PROFILE_KIND_STANDALONE,
     WINDOWS_RUNNER_LABELS,
+    WINE_OPTION_DEFAULTS,
+    WINE_OPTION_LABELS,
     Profile,
 )
 from ..core.paths import AppPaths
@@ -215,6 +217,9 @@ class ProfileDialog(QDialog):
         runner_row.addWidget(self.windows_runner_combo, 1)
         flags_layout.addLayout(runner_row)
         layout.addWidget(flags_box)
+        layout.addWidget(self._build_wine_box(profile))
+        self.windows_runner_combo.currentIndexChanged.connect(self._sync_wine_versions)
+        self._sync_wine_versions()
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         self.check_button = buttons.addButton("Проверить", QDialogButtonBox.ActionRole)
@@ -226,6 +231,113 @@ class ProfileDialog(QDialog):
 
         self._sync_backend_hint()
         self._sync_enabled()
+
+    # ------------------------------------------------------------------ Proton/Wine tuning
+    def _build_wine_box(self, profile: Profile) -> QGroupBox:
+        options = dict(WINE_OPTION_DEFAULTS)
+        options.update(getattr(profile, "wine_options", {}) or {})
+        box = QGroupBox("Proton / Wine: дополнительно (только для Windows-сборок)")
+        box.setCheckable(True)
+        box.setChecked(False)
+        vbox = QVBoxLayout(box)
+        self._wine_body = QWidget()
+        vbox.addWidget(self._wine_body)
+        body = QVBoxLayout(self._wine_body)
+        body.setContentsMargins(0, 0, 0, 0)
+        box.toggled.connect(self._wine_body.setVisible)
+        self._wine_body.setVisible(False)
+        hint = QLabel(
+            "Для PortProton эти значения записываются в <exe>.ppdb (PW_*) перед каждым запуском и "
+            "перекрывают настройки из его меню. Для Proton/Wine превращаются в переменные окружения."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: palette(mid);")
+        body.addWidget(hint)
+
+        self.wine_checks: dict[str, QCheckBox] = {}
+        for key, label in WINE_OPTION_LABELS.items():
+            check = QCheckBox(label)
+            check.setChecked(bool(options.get(key)))
+            self.wine_checks[key] = check
+            body.addWidget(check)
+        self.wine_checks["ntsync"].setToolTip("Требует модуль ntsync в ядре; при включении esync/fsync отключаются самим Wine.")
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignRight)
+        self.windows_version_combo = QComboBox()
+        for version in winerun.WINDOWS_VERSIONS:
+            self.windows_version_combo.addItem(f"Windows {version}", version)
+        index = self.windows_version_combo.findData(str(options.get("windows_version") or "10"))
+        self.windows_version_combo.setCurrentIndex(max(0, index))
+        form.addRow("Версия Windows в префиксе", self.windows_version_combo)
+
+        self.wine_version_combo = QComboBox()
+        self.wine_version_combo.setEditable(True)
+        self.wine_version_combo.setToolTip(
+            "PortProton: имя сборки из data/dist (PROTON_LG / WINE_LG — версии по умолчанию). "
+            "Proton: каталог с установленным Proton (compatibilitytools.d/...). Пусто — как у раннера."
+        )
+        self._wine_version_initial = str(options.get("wine_version") or "")
+        form.addRow("Версия Wine / Proton", self.wine_version_combo)
+
+        self.prefix_name_combo = QComboBox()
+        self.prefix_name_combo.setEditable(True)
+        self.prefix_name_combo.setToolTip(
+            "PortProton: имя префикса в data/prefixes (пусто — DEFAULT). "
+            "Proton/Wine: абсолютный путь к префиксу; пусто — <каталог профиля>/proton-prefix."
+        )
+        self._prefix_name_initial = str(options.get("prefix_name") or "")
+        form.addRow("Префикс", self.prefix_name_combo)
+
+        self.dll_overrides_edit = QLineEdit(str(options.get("dll_overrides") or ""))
+        self.dll_overrides_edit.setPlaceholderText("d3d9=n,b;dinput8=n")
+        form.addRow("WINEDLLOVERRIDES", self.dll_overrides_edit)
+        body.addLayout(form)
+
+        body.addWidget(QLabel("Дополнительные переменные окружения (KEY=VALUE, по одной на строку):"))
+        self.extra_env_edit = QPlainTextEdit(str(options.get("extra_env") or ""))
+        self.extra_env_edit.setPlaceholderText("DXVK_HUD=fps\nPW_VKBASALT=1")
+        self.extra_env_edit.setMaximumHeight(80)
+        body.addWidget(self.extra_env_edit)
+        return box
+
+    def _sync_wine_versions(self) -> None:
+        """Fill the version/prefix combos for the selected runner, keeping the typed value."""
+        runner = self.windows_runner_combo.currentData() or "auto"
+        current_version = self.wine_version_combo.currentText().strip() or self._wine_version_initial
+        current_prefix = self.prefix_name_combo.currentText().strip() or self._prefix_name_initial
+        versions: list[str] = []
+        prefixes: list[str] = []
+        try:
+            if runner in ("auto", winerun.RUNNER_KIND_PORTPROTON):
+                pp = winerun.find_portproton(str(getattr(self._app, "extra", {}).get("portproton_path", "") or ""))
+                root = winerun.portproton_root(pp.path if pp else "")
+                versions = winerun.list_portproton_dists(root)
+                prefixes = winerun.list_portproton_prefixes(root)
+            if runner in ("auto", winerun.RUNNER_KIND_PROTON):
+                versions += winerun.list_proton_versions()
+        except OSError:
+            pass
+        for combo, values, current in (
+            (self.wine_version_combo, versions, current_version),
+            (self.prefix_name_combo, prefixes, current_prefix),
+        ):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItem("")
+            for value in values:
+                combo.addItem(value)
+            combo.setCurrentText(current)
+            combo.blockSignals(False)
+
+    def _wine_options(self) -> dict[str, object]:
+        options: dict[str, object] = {key: check.isChecked() for key, check in self.wine_checks.items()}
+        options["windows_version"] = self.windows_version_combo.currentData() or "10"
+        options["wine_version"] = self.wine_version_combo.currentText().strip()
+        options["prefix_name"] = self.prefix_name_combo.currentText().strip()
+        options["dll_overrides"] = self.dll_overrides_edit.text().strip()
+        options["extra_env"] = self.extra_env_edit.toPlainText().strip()
+        return options
 
     # ------------------------------------------------------------------ helpers
     def _pick_game(self) -> None:
@@ -313,6 +425,7 @@ class ProfileDialog(QDialog):
         profile.prefer_native_openxray = self.prefer_openxray_check.isChecked()
         profile.auto_proton_fallback = self.auto_fallback_check.isChecked()
         profile.windows_runner = self.windows_runner_combo.currentData() or "auto"
+        profile.wine_options = self._wine_options()
         profile.description = self.description_edit.toPlainText().strip()
         return profile
 

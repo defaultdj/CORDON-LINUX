@@ -209,29 +209,257 @@ def available_runners(*, portproton_path: str = "") -> list[WindowsRunner]:
     return found
 
 
+# ---------------------------------------------------------------------------- tuning options
+#: Windows version names accepted by ``winecfg -v`` / ``PW_WINDOWS_VER``.
+WINDOWS_VERSIONS = ("7", "8.1", "10", "11")
+
+#: Wine/Proton dists PortProton ships or downloads into ``data/dist``; the two aliases resolve to
+#: the versions pinned in PortProton's ``var`` file.
+PORTPROTON_WINE_ALIASES = ("PROTON_LG", "WINE_LG")
+
+
+def option_env(options: dict[str, object], kind: str) -> dict[str, str]:
+    """Environment for Proton/Wine derived from ``Profile.wine_options``.
+
+    PortProton reads the same switches from ``.ppdb`` (see :func:`ppdb_variables`) — only the
+    free-form ``extra_env``/``dll_overrides`` are exported for it, everything else would be
+    overridden by its own ``var`` defaults anyway.
+    """
+    env: dict[str, str] = {}
+    if kind != RUNNER_KIND_PORTPROTON:
+        esync = bool(options.get("esync", True))
+        fsync = bool(options.get("fsync", True))
+        ntsync = bool(options.get("ntsync", False))
+        if kind == RUNNER_KIND_PROTON:
+            if not esync:
+                env["PROTON_NO_ESYNC"] = "1"
+            if not fsync:
+                env["PROTON_NO_FSYNC"] = "1"
+            if ntsync:
+                env["PROTON_USE_NTSYNC"] = "1"
+            if options.get("fsr"):
+                env["WINE_FULLSCREEN_FSR"] = "1"
+        else:
+            env["WINEESYNC"] = "1" if esync else "0"
+            env["WINEFSYNC"] = "1" if fsync else "0"
+            if ntsync:
+                env["WINENTSYNC"] = "1"
+        if options.get("large_address_aware", True):
+            env["WINE_LARGE_ADDRESS_AWARE"] = "1"
+        if options.get("mangohud"):
+            env["MANGOHUD"] = "1"
+    overrides = str(options.get("dll_overrides") or "").strip()
+    if overrides:
+        env["WINEDLLOVERRIDES"] = overrides
+    env.update(parse_extra_env(str(options.get("extra_env") or "")))
+    return env
+
+
+def parse_extra_env(text: str) -> dict[str, str]:
+    """``KEY=VALUE`` per line; blank lines and ``#`` comments are ignored, bad lines skipped."""
+    result: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            result[key] = value.strip().strip('"')
+    return result
+
+
+def option_wrappers(options: dict[str, object], kind: str) -> tuple[list[str], list[str]]:
+    """Commands to prepend to the Proton/Wine command line, plus notes about what was skipped.
+
+    PortProton applies GameMode / MangoHud / sleep inhibition itself from the ``.ppdb``.
+    """
+    if kind == RUNNER_KIND_PORTPROTON:
+        return [], []
+    wrappers: list[str] = []
+    notes: list[str] = []
+    if options.get("gamemode"):
+        gamemoderun = shutil.which("gamemoderun")
+        if gamemoderun:
+            wrappers += [gamemoderun]
+        else:
+            notes.append("GameMode включён в профиле, но gamemoderun не найден — пропущено")
+    if options.get("inhibit_sleep", True):
+        inhibit = shutil.which("systemd-inhibit")
+        # without the system bus systemd-inhibit refuses to start (and would take the game with it)
+        if inhibit and os.path.exists("/run/dbus/system_bus_socket"):
+            wrappers += [inhibit, "--what=idle:sleep", "--who=CordonIX", "--why=Игра запущена", "--mode=block"]
+    if options.get("mangohud") and kind == RUNNER_KIND_WINE:
+        mangohud = shutil.which("mangohud")
+        if mangohud:
+            wrappers += [mangohud]
+        else:
+            notes.append("MangoHud включён в профиле, но не установлен — пропущено")
+    return wrappers, notes
+
+
+def wine_virtual_desktop_args(options: dict[str, object], kind: str) -> list[str]:
+    """``explorer /desktop=...`` prefix for plain Wine (Proton/PortProton have their own switch)."""
+    if kind == RUNNER_KIND_WINE and options.get("virtual_desktop"):
+        return ["explorer", "/desktop=CordonIX,1920x1080"]
+    return []
+
+
+def _flag(value: object) -> str:
+    return "1" if value else "0"
+
+
+def ppdb_variables(options: dict[str, object]) -> dict[str, str]:
+    """``PW_*`` variables PortProton reads from ``<exe>.ppdb`` for the given profile options."""
+    variables = {
+        "PW_USE_ESYNC": _flag(options.get("esync", True)),
+        "PW_USE_FSYNC": _flag(options.get("fsync", True)),
+        "PW_USE_NTSYNC": _flag(options.get("ntsync", False)),
+        "PW_USE_GAMEMODE": _flag(options.get("gamemode", False)),
+        "PW_MANGOHUD": _flag(options.get("mangohud", False)),
+        "PW_USE_INHIBIT_SLEEP": _flag(options.get("inhibit_sleep", True)),
+        "PW_WINE_FULLSCREEN_FSR": _flag(options.get("fsr", False)),
+        "PW_VIRTUAL_DESKTOP": _flag(options.get("virtual_desktop", False)),
+    }
+    if options.get("large_address_aware", True):
+        variables["WINE_LARGE_ADDRESS_AWARE"] = "1"
+    windows_version = str(options.get("windows_version") or "").strip()
+    if windows_version in WINDOWS_VERSIONS:
+        variables["PW_WINDOWS_VER"] = windows_version
+    wine_version = str(options.get("wine_version") or "").strip()
+    if wine_version:
+        variables["PW_WINE_USE"] = wine_version
+    prefix_name = str(options.get("prefix_name") or "").strip()
+    if prefix_name:
+        variables["PW_PREFIX_NAME"] = prefix_name
+    overrides = str(options.get("dll_overrides") or "").strip()
+    if overrides:
+        variables["WINEDLLOVERRIDES"] = overrides
+    variables.update(parse_extra_env(str(options.get("extra_env") or "")))
+    return variables
+
+
+def portproton_root(runner_path: str) -> str:
+    """``~/PortProton`` for ``~/PortProton/data/scripts/start.sh``; empty for Flatpak/unknown."""
+    path = util.norm(os.path.realpath(runner_path)) if runner_path else ""
+    marker = "/data/scripts/start.sh"
+    if path.endswith(marker):
+        return path[: -len(marker)]
+    for root in PORTPROTON_ROOTS:
+        base = os.path.expanduser(root)
+        if os.path.isfile(os.path.join(base, "data", "scripts", "start.sh")):
+            return util.norm(base)
+    return ""
+
+
+def list_portproton_dists(root: str) -> list[str]:
+    """Wine/Proton builds available to PortProton (``data/dist/*``) — for the version combo box."""
+    names: list[str] = []
+    dist = os.path.join(root, "data", "dist") if root else ""
+    if dist and os.path.isdir(dist):
+        for name in util.entry_names(dist):
+            if os.path.isdir(os.path.join(dist, name)):
+                names.append(name)
+    names.sort(key=_natural_key, reverse=True)
+    return list(PORTPROTON_WINE_ALIASES) + names
+
+
+def list_portproton_prefixes(root: str) -> list[str]:
+    prefixes = os.path.join(root, "data", "prefixes") if root else ""
+    if not prefixes or not os.path.isdir(prefixes):
+        return []
+    return sorted(name for name in util.entry_names(prefixes) if os.path.isdir(os.path.join(prefixes, name)))
+
+
+def portproton_prefix_dir(root: str, prefix_name: str) -> str:
+    return os.path.join(root, "data", "prefixes", prefix_name or "DEFAULT") if root else ""
+
+
+def list_proton_versions() -> list[str]:
+    """Absolute directories of every Proton install (newest first) — for the version combo box."""
+    found: list[str] = []
+    steam_root = _steam_root()
+    search_dirs: list[str] = []
+    if steam_root:
+        search_dirs += [
+            os.path.join(steam_root, "compatibilitytools.d"),
+            os.path.join(steam_root, "steamapps", "common"),
+        ]
+    search_dirs += ["/usr/share/steam/compatibilitytools.d", os.path.expanduser("~/.local/share/Steam/compatibilitytools.d")]
+    for directory in search_dirs:
+        if not os.path.isdir(directory):
+            continue
+        for name in sorted(util.entry_names(directory), key=_natural_key, reverse=True):
+            candidate = os.path.join(directory, name)
+            if "proton" in name.lower() and _executable(os.path.join(candidate, "proton")):
+                found.append(util.norm(candidate))
+    return found
+
+
+def proton_from_directory(directory: str, compat_data: str) -> WindowsRunner | None:
+    """Runner for an explicitly chosen Proton install directory (``wine_options['wine_version']``)."""
+    script = os.path.join(os.path.expanduser(directory), "proton")
+    if not _executable(script):
+        return None
+    steam_root = _steam_root()
+    return WindowsRunner(
+        kind=RUNNER_KIND_PROTON,
+        path=util.norm(script),
+        argv=[util.norm(script), "run"],
+        label=f"Proton ({os.path.basename(os.path.normpath(directory))})",
+        env={
+            "STEAM_COMPAT_DATA_PATH": compat_data,
+            "STEAM_COMPAT_CLIENT_INSTALL_PATH": steam_root or os.path.expanduser("~/.local/share/Steam"),
+        },
+    )
+
+
 # ---------------------------------------------------------------------------- PortProton .ppdb
 PPDB_MARKER = "# managed by CordonIX: LAUNCH_PARAMETERS is rewritten before every launch"
+PPDB_BLOCK_BEGIN = "# >>> CordonIX (rewritten before every launch; edit these settings in the profile) >>>"
+PPDB_BLOCK_END = "# <<< CordonIX <<<"
 
 
-def write_ppdb_launch_parameters(exe_path: str, arguments: list[str]) -> str:
-    """Store engine arguments in ``<exe>.ppdb`` so PortProton passes them to the game.
+def write_ppdb_launch_parameters(
+    exe_path: str, arguments: list[str], variables: dict[str, str] | None = None
+) -> str:
+    """Store engine arguments and ``PW_*`` settings in ``<exe>.ppdb`` for PortProton.
 
-    Only ``LAUNCH_PARAMETERS`` is touched: PortProton keeps its own settings (prefix, DXVK,
-    MangoHud, …) in the same file and those must survive. Returns the ``.ppdb`` path.
+    Only the CordonIX block at the end of the file is rewritten: PortProton keeps its own
+    settings in the same file and lines outside the block survive. Because the block comes
+    last, its values win over anything PortProton's GUI wrote earlier. Returns the path.
     """
     ppdb = exe_path + ".ppdb"
-    value = " ".join(_ppdb_quote(argument) for argument in arguments)
-    lines: list[str] = []
-    if os.path.isfile(ppdb):
-        lines = util.read_text(ppdb, errors="replace").splitlines()
-    kept = [line for line in lines if not line.startswith("export LAUNCH_PARAMETERS=") and line != PPDB_MARKER]
-    if kept and not kept[0].startswith("#!"):
-        kept.insert(0, "#!/usr/bin/env bash")
-    elif not kept:
+    kept = _ppdb_lines_outside_block(util.read_text(ppdb, errors="replace") if os.path.isfile(ppdb) else "")
+    if not kept:
         kept = ["#!/usr/bin/env bash", f"#{os.path.basename(exe_path)}"]
-    kept += [PPDB_MARKER, f'export LAUNCH_PARAMETERS="{value}"']
-    util.write_text_atomic(ppdb, "\n".join(kept) + "\n")
+    elif not kept[0].startswith("#!"):
+        kept.insert(0, "#!/usr/bin/env bash")
+    value = " ".join(_ppdb_quote(argument) for argument in arguments)
+    block = [PPDB_BLOCK_BEGIN]
+    for key, val in (variables or {}).items():
+        block.append(f'export {key}="{_ppdb_quote(val)}"')
+    block += [f'export LAUNCH_PARAMETERS="{value}"', PPDB_BLOCK_END]
+    util.write_text_atomic(ppdb, "\n".join(kept + block) + "\n")
     return ppdb
+
+
+def _ppdb_lines_outside_block(text: str) -> list[str]:
+    kept: list[str] = []
+    inside = False
+    for line in text.splitlines():
+        if line == PPDB_BLOCK_BEGIN:
+            inside = True
+            continue
+        if line == PPDB_BLOCK_END:
+            inside = False
+            continue
+        if inside or line == PPDB_MARKER or line.startswith("export LAUNCH_PARAMETERS="):
+            continue  # old single-line format from earlier CordonIX versions is dropped too
+        kept.append(line)
+    while kept and not kept[-1].strip():
+        kept.pop()
+    return kept
 
 
 def _ppdb_quote(argument: str) -> str:

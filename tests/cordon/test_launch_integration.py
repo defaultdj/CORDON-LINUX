@@ -199,7 +199,7 @@ def test_exe_via_portproton_writes_ppdb(fake_install, fake_profile, monkeypatch,
     assert 'export PW_PREFIX_NAME="STALKER"' in ppdb
     assert "export LAUNCH_PARAMETERS=" in ppdb
     assert "-fsltx" in ppdb and "Z:\\\\" in ppdb, ppdb  # backslashes doubled for bash
-    assert winerun.PPDB_MARKER in ppdb
+    assert winerun.PPDB_BLOCK_BEGIN in ppdb
     # rewriting keeps exactly one LAUNCH_PARAMETERS line
     launch.build_launch_plan(fake_profile, fake_install.store, engine=info)
     assert util.read_text(info.executable + ".ppdb").count("export LAUNCH_PARAMETERS=") == 1
@@ -254,3 +254,80 @@ def test_automatic_proton_fallback_on_crash(fake_install, fake_profile, monkeypa
     assert not outcome.crashed
     log_content = util.read_text(outcome.session_log).lower()
     assert "proton" in log_content or "wine" in log_content
+
+
+# --------------------------------------------------------------------------- wine options
+def test_wine_options_reach_the_ppdb(fake_install, fake_profile, monkeypatch, tmp_path):
+    winerun = _isolated_runners(monkeypatch, tmp_path)
+    _fake_tool(str(tmp_path / "bin"), "portproton")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    info = _fake_exe_info(fake_install)
+    fake_profile.wine_options.update(
+        {"esync": False, "gamemode": True, "wine_version": "WINE_LG", "prefix_name": "STALKER",
+         "dll_overrides": "dinput8=n", "extra_env": "PW_VKBASALT=1\n# comment\nbad line"}
+    )
+    # a stale single-line record from an older CordonIX plus PortProton's own value
+    util.write_text_atomic(
+        info.executable + ".ppdb",
+        f'#!/usr/bin/env bash\nexport PW_MANGOHUD="1"\n{winerun.PPDB_MARKER}\nexport LAUNCH_PARAMETERS="-old"\n',
+    )
+
+    launch.build_launch_plan(fake_profile, fake_install.store, engine=info)
+    ppdb = util.read_text(info.executable + ".ppdb")
+    assert 'export PW_USE_ESYNC="0"' in ppdb
+    assert 'export PW_USE_GAMEMODE="1"' in ppdb
+    assert 'export PW_WINE_USE="WINE_LG"' in ppdb
+    assert 'export PW_PREFIX_NAME="STALKER"' in ppdb
+    assert 'export WINEDLLOVERRIDES="dinput8=n"' in ppdb
+    assert 'export PW_VKBASALT="1"' in ppdb
+    assert "bad line" not in ppdb and "-old" not in ppdb
+    # PortProton's own line survives, but our block (later in the file) wins
+    lines = ppdb.splitlines()
+    assert lines.index('export PW_MANGOHUD="1"') < lines.index('export PW_MANGOHUD="0"')
+    # idempotent
+    launch.build_launch_plan(fake_profile, fake_install.store, engine=info)
+    assert util.read_text(info.executable + ".ppdb").count(winerun.PPDB_BLOCK_BEGIN) == 1
+
+
+def test_wine_options_become_env_for_proton_and_wine(fake_install, fake_profile, monkeypatch, tmp_path):
+    _isolated_runners(monkeypatch, tmp_path)
+    _fake_tool(str(tmp_path / "bin"), "proton")
+    gamemoderun = _fake_tool(str(tmp_path / "bin"), "gamemoderun")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    fake_profile.wine_options.update({"esync": False, "ntsync": True, "gamemode": True, "mangohud": True,
+                                      "inhibit_sleep": False, "dll_overrides": "d3d9=n,b"})
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=_fake_exe_info(fake_install))
+    assert plan.argv[0] == gamemoderun
+    assert plan.env["PROTON_NO_ESYNC"] == "1" and plan.env["PROTON_USE_NTSYNC"] == "1"
+    assert "PROTON_NO_FSYNC" not in plan.env
+    assert plan.env["MANGOHUD"] == "1" and plan.env["WINEDLLOVERRIDES"] == "d3d9=n,b"
+
+    fake_profile.windows_runner = "wine"
+    _fake_tool(str(tmp_path / "bin"), "wine")
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=_fake_exe_info(fake_install))
+    assert plan.env["WINEESYNC"] == "0" and plan.env["WINEFSYNC"] == "1" and plan.env["WINENTSYNC"] == "1"
+    assert plan.env["WINEPREFIX"] == os.path.join(plan.root_path, "proton-prefix")
+
+
+def test_profile_can_pin_a_proton_install_dir(fake_install, fake_profile, monkeypatch, tmp_path):
+    _isolated_runners(monkeypatch, tmp_path)
+    _fake_tool(str(tmp_path / "bin"), "proton")
+    ge = _fake_tool(str(tmp_path / "GE-Proton9-20"), "proton")
+    monkeypatch.setenv("PATH", str(tmp_path / "bin"))
+    fake_profile.windows_runner = "proton"
+    fake_profile.wine_options["wine_version"] = str(tmp_path / "GE-Proton9-20")
+    fake_profile.wine_options["prefix_name"] = str(tmp_path / "shared-prefix")
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=_fake_exe_info(fake_install))
+    assert plan.argv[:2] == [ge, "run"]
+    assert plan.env["STEAM_COMPAT_DATA_PATH"] == str(tmp_path / "shared-prefix")
+
+
+def test_wine_options_survive_round_trip_and_drop_junk():
+    from cordon.core.models import Profile
+
+    profile = Profile.from_dict({"id": "x", "name": "n", "wine_options": {"esync": 0, "bogus": 1, "windows_version": 7}})
+    assert profile.wine_options["esync"] is False
+    assert profile.wine_options["fsync"] is True
+    assert profile.wine_options["windows_version"] == "7"
+    assert "bogus" not in profile.wine_options
+    assert Profile.from_dict(profile.to_dict()).wine_options == profile.wine_options

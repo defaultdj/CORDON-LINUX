@@ -108,11 +108,22 @@ def build_launch_plan(
         game_args = [
             winerun.to_windows_path(arg) if os.path.isabs(arg) else arg for arg in game_args
         ]
+        options = profile.wine_options
         compat_data = os.path.join(root, "proton-prefix")
+        custom_prefix = str(options.get("prefix_name") or "").strip()
+        if custom_prefix and os.path.isabs(os.path.expanduser(custom_prefix)):
+            compat_data = util.norm(os.path.expanduser(custom_prefix))
         util.ensure_dir(compat_data)
-        runner = winerun.find_runner(
-            preferred=profile.windows_runner, portproton_path=portproton_path, compat_data=compat_data
-        )
+        runner = None
+        wine_version = str(options.get("wine_version") or "").strip()
+        if wine_version and profile.windows_runner == winerun.RUNNER_KIND_PROTON:
+            runner = winerun.proton_from_directory(wine_version, compat_data)
+            if runner is None:
+                notes.append(f"выбранная версия Proton не найдена ({wine_version}) — используется стандартная")
+        if runner is None:
+            runner = winerun.find_runner(
+                preferred=profile.windows_runner, portproton_path=portproton_path, compat_data=compat_data
+            )
         if runner is None:
             wanted = WINDOWS_RUNNER_LABELS.get(profile.windows_runner, profile.windows_runner)
             raise LaunchError(
@@ -121,17 +132,31 @@ def build_launch_plan(
                 "либо укажите путь к PortProton в настройках лаунчера."
             )
         env.update(runner.env)
+        env.update(winerun.option_env(options, runner.kind))
         if runner.args_via_ppdb:
             # PortProton ignores anything after the .exe on its command line:
-            # arguments live in <exe>.ppdb as LAUNCH_PARAMETERS.
-            ppdb = winerun.write_ppdb_launch_parameters(info.executable, game_args)
+            # arguments and PW_* settings live in <exe>.ppdb.
+            ppdb = winerun.write_ppdb_launch_parameters(
+                info.executable, game_args, winerun.ppdb_variables(options)
+            )
             argv = list(runner.argv) + [info.executable]
-            notes.append(f"запуск через {runner.label}; аргументы движка записаны в {ppdb}")
+            notes.append(f"запуск через {runner.label}; аргументы движка и настройки записаны в {ppdb}")
         else:
-            argv = list(runner.argv) + [info.executable] + game_args
+            wrappers, wrapper_notes = winerun.option_wrappers(options, runner.kind)
+            notes += wrapper_notes
+            argv = (
+                wrappers
+                + list(runner.argv)
+                + winerun.wine_virtual_desktop_args(options, runner.kind)
+                + [info.executable]
+                + game_args
+            )
             notes.append(f"запуск Windows-сборки через {runner.describe()}")
             if runner.kind == winerun.RUNNER_KIND_PROTON:
                 notes.append(f"префикс Proton: {compat_data}")
+            elif runner.kind == winerun.RUNNER_KIND_WINE and "WINEPREFIX" not in env:
+                env["WINEPREFIX"] = compat_data
+                notes.append(f"WINEPREFIX: {compat_data}")
         # the engine must start next to its DLLs; Wine resolves them relative to cwd/exe dir
         cwd = engine_dir if os.path.isdir(engine_dir) else cwd
     else:

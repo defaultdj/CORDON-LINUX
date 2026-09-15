@@ -24,6 +24,37 @@ BACKEND_LINK = "link"
 BACKEND_FUSE = "fuse-overlayfs"
 BACKEND_DIRECT = "direct"
 
+#: Wine/Proton tuning shared by every Windows runner. Each key maps to environment variables
+#: for Proton/Wine and to ``PW_*`` variables in ``<exe>.ppdb`` for PortProton (see winerun).
+WINE_OPTION_DEFAULTS: dict[str, Any] = {
+    "esync": True,
+    "fsync": True,
+    "ntsync": False,
+    "gamemode": False,
+    "mangohud": False,
+    "inhibit_sleep": True,
+    "fsr": False,
+    "large_address_aware": True,
+    "virtual_desktop": False,
+    "windows_version": "10",  # 7 | 8.1 | 10 | 11
+    "wine_version": "",  # PortProton dist name / Proton install dir; empty = runner default
+    "prefix_name": "",  # PortProton prefix (empty = DEFAULT) / Proton compat data override
+    "dll_overrides": "",  # WINEDLLOVERRIDES, e.g. "d3d9=n,b;dinput8=n"
+    "extra_env": "",  # free-form KEY=VALUE lines
+}
+WINE_OPTION_LABELS = {
+    "esync": "esync (быстрые примитивы синхронизации)",
+    "fsync": "fsync (futex-синхронизация, ядро 5.16+)",
+    "ntsync": "ntsync (драйвер /dev/ntsync, ядро 6.14+)",
+    "gamemode": "Feral GameMode",
+    "mangohud": "MangoHud (оверлей FPS)",
+    "inhibit_sleep": "Не давать системе уснуть во время игры",
+    "fsr": "AMD FSR при масштабировании в полноэкранном режиме",
+    "large_address_aware": "Large Address Aware (>2 ГБ для 32-битного движка)",
+    "virtual_desktop": "Виртуальный рабочий стол Wine",
+}
+
+
 #: How Windows builds (.exe) are started: PortProton, Proton (Steam) or plain Wine.
 WINDOWS_RUNNERS = ("auto", "portproton", "proton", "wine")
 WINDOWS_RUNNER_LABELS = {
@@ -110,6 +141,10 @@ class Profile:
     prefer_native_openxray: bool = True
     auto_proton_fallback: bool = True
     windows_runner: str = "auto"  # auto | portproton | proton | wine
+    wine_options: dict[str, Any] = field(default_factory=lambda: dict(WINE_OPTION_DEFAULTS))
+    #: Set when the build was installed by CordonIX (setup.exe / archive) into a directory it owns;
+    #: deleting the profile then removes the build itself.
+    managed_install: bool = False
 
     # ------------------------------------------------------------------ helpers
     @property
@@ -180,6 +215,8 @@ class Profile:
             prefer_native_openxray=bool(payload.get("prefer_native_openxray", True)),
             auto_proton_fallback=bool(payload.get("auto_proton_fallback", True)),
             windows_runner=str(payload.get("windows_runner") or "auto"),
+            wine_options=_merge_wine_options(payload.get("wine_options")),
+            managed_install=bool(payload.get("managed_install", False)),
         )
         profile.normalize()
         return profile
@@ -203,9 +240,23 @@ class Profile:
             self.game_id = "auto"
         if self.windows_runner not in WINDOWS_RUNNERS:
             self.windows_runner = "auto"
+        self.wine_options = _merge_wine_options(self.wine_options)
         self.excluded_paths = util.unique(self.excluded_paths)
         if not self.created_at:
             self.created_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _merge_wine_options(raw: Any) -> dict[str, Any]:
+    """Defaults + known keys from *raw*; unknown keys are dropped, types coerced."""
+    merged: dict[str, Any] = dict(WINE_OPTION_DEFAULTS)
+    if not isinstance(raw, dict):
+        return merged
+    for key, default in WINE_OPTION_DEFAULTS.items():
+        if key not in raw:
+            continue
+        value = raw[key]
+        merged[key] = bool(value) if isinstance(default, bool) else str(value or "")
+    return merged
 
 
 @dataclass(slots=True)
