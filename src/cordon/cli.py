@@ -678,7 +678,28 @@ def cmd_tools(args, service: CordonService) -> int:
         for name in missing:
             print(f"  ✗ {name}")
     print(f"Discord IPC: {'доступен' if discord_available() else 'не найден'}")
+    print(screen_summary())
     return EXIT_OK
+
+
+def screen_summary() -> str:
+    """Report the geometry the GUI will use (helps diagnose windows that do not fit)."""
+    try:
+        from .gui import geometry
+    except ImportError:
+        return "Экран: неизвестно (модуль интерфейса недоступен)"
+    try:
+        from PySide6.QtWidgets import QApplication
+    except ImportError:
+        return "Экран: PySide6 не установлен — графический интерфейс недоступен"
+    holder = []
+    try:
+        app = QApplication.instance()
+        if app is None:
+            holder.append(QApplication([]))  # keep a reference: an unreferenced app crashes
+        return geometry.describe()
+    except Exception as exc:  # noqa: BLE001 - a diagnostic must never break the command
+        return f"Экран: не удалось определить ({exc})"
 
 
 def cmd_gui(args, service: CordonService) -> int:

@@ -46,22 +46,35 @@ def screen_override() -> tuple[int, int] | None:
     return parse_screen(os.environ.get("CORDON_SCREEN", ""))
 
 
+def available_rect() -> tuple[int, int, int, int]:
+    """Available screen area as ``(x, y, width, height)``.
+
+    ``availableGeometry`` already excludes panels/docks, which is what makes the launcher fit a
+    small desktop: the window is sized from this rectangle, not from the physical resolution.
+    """
+    override = screen_override()
+    if override is not None:
+        return (0, 0, override[0], override[1])
+    try:  # imported lazily: the pure helpers above stay importable without Qt
+        from PySide6.QtGui import QGuiApplication
+    except ImportError:  # pragma: no cover - CLI without Qt
+        return (0, 0, *DEFAULT_SCREEN)
+    screen = QGuiApplication.primaryScreen()
+    if screen is None:  # pragma: no cover - no display at all
+        return (0, 0, *DEFAULT_SCREEN)
+    rect = screen.availableGeometry()
+    if rect.width() <= 0 or rect.height() <= 0:  # pragma: no cover - odd platform plugins
+        return (0, 0, *DEFAULT_SCREEN)
+    return (rect.x(), rect.y(), rect.width(), rect.height())
+
+
 def screen_size() -> tuple[int, int]:
     """Available screen area in device-independent pixels."""
     override = screen_override()
     if override is not None:
         return override
-    try:  # imported lazily: the pure helpers above stay importable without Qt
-        from PySide6.QtGui import QGuiApplication
-    except ImportError:  # pragma: no cover - CLI without Qt
-        return DEFAULT_SCREEN
-    screen = QGuiApplication.primaryScreen()
-    if screen is None:  # pragma: no cover - no display at all
-        return DEFAULT_SCREEN
-    rect = screen.availableGeometry()
-    if rect.width() <= 0 or rect.height() <= 0:  # pragma: no cover - odd platform plugins
-        return DEFAULT_SCREEN
-    return (rect.width(), rect.height())
+    x, y, width, height = available_rect()
+    return (width, height)
 
 
 def fit_size(
@@ -121,3 +134,15 @@ def clamp_rect(
     x = max(0, min(x, max(0, screen_w - width)))
     y = max(0, min(y, max(0, screen_h - height)))
     return (x, y, width, height)
+
+
+def describe() -> str:
+    """One-line summary for ``cordon tools`` and the launcher log."""
+    rect = available_rect()
+    size = (rect[2], rect[3])
+    window = fit_size((1280, 820), size)
+    compact = "да" if compact_mode(size) else "нет"
+    return (
+        f"Экран: доступно {size[0]}x{size[1]} (начало {rect[0]},{rect[1]}); "
+        f"окно лаунчера {window[0]}x{window[1]}; компактный режим: {compact}"
+    )

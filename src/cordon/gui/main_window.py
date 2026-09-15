@@ -33,7 +33,7 @@ from ..core.service import CordonService
 from . import geometry as geometry_mod
 from . import theme as theme_mod
 from .dialogs import AboutDialog, LauncherSettingsDialog, Mo2Dialog, ProfileDialog, ReportDialog
-from .widgets import ModTable, ProfileList, ReportPane, StatusStrip, make_button, summary_line
+from .widgets import ModTable, ProfileList, ReportPane, StatusStrip, make_button, make_menu_button, summary_line
 from .workers import SessionThread, Task
 
 UPSTREAM = "https://github.com/ITzSYUK/CORDON"
@@ -53,14 +53,19 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"CORDON-LINUX {__version__}")
         # Small screens (1024x768 is still common for S.T.A.L.K.E.R.) must not get a window
         # bigger than their display: everything derives from the available area.
-        self._screen = geometry_mod.screen_size()
+        self._screen_rect = geometry_mod.available_rect()
+        self._screen = (self._screen_rect[2], self._screen_rect[3])
         self._compact = geometry_mod.compact_mode(self._screen)
-        self.setMinimumSize(*geometry_mod.minimum_window(self._screen))
-        self.resize(*geometry_mod.fit_size((1280, 820), self._screen))
+        self._geometry_checked = False
 
         self._header = self._build_header()
-        self._build_central()
+        # The status bar must exist before the central widget: it hosts the progress indicator and
+        # the priority hint, and both are added while building the tabs.
         self.setStatusBar(QStatusBar())
+        self._build_central()
+        # Sizes are applied after the widgets exist: the layout minimum tells how much room the
+        # content really needs, which is the only reliable way to avoid clipping.
+        self._apply_startup_size()
         self._apply_theme()
 
         if profile_id:
@@ -69,6 +74,43 @@ class MainWindow(QMainWindow):
                 self.settings.selected_profile_id = profile.id
         self.refresh_profiles(select=self.settings.selected_profile_id)
         self._restore_geometry()
+
+    def _mod_hint(self, standalone: bool) -> str:
+        """Text for the status bar: the full sentence only when there is room for it."""
+        if standalone:
+            return "Профиль-сборка: моды не подключаются, запускается только игра."
+        if self._compact:
+            return "Ниже в списке — выше приоритет"
+        return "Чем ниже мод в списке, тем выше его приоритет (его файлы побеждают)."
+
+    def _apply_startup_size(self) -> None:
+        """Pick window bounds from the screen on one side and the content on the other.
+
+        * minimum - never smaller than the layout needs (otherwise buttons are cut off),
+          but capped by the screen so a small display still shows a complete window;
+        * maximum - the available area, so nothing can be pushed off the screen;
+        * start size - the preferred 1280x820, widened when the non-compact header needs more,
+          then trimmed to the screen.
+        """
+        rect = self._screen_rect
+        content = self.minimumSizeHint()
+        # +32: Qt refines font-dependent metrics on the first layout pass, so the hint measured now
+        # is a little smaller than the final requirement.
+        slack = 32
+        floor_width, floor_height = geometry_mod.minimum_window(self._screen)
+        minimum_width = min(max(floor_width, content.width() + slack), rect[2])
+        minimum_height = min(max(floor_height, content.height()), rect[3])
+        self.setMinimumSize(minimum_width, minimum_height)
+        self.setMaximumSize(rect[2], rect[3])
+        preferred = (max(1280, minimum_width), 820)
+        self.resize(*geometry_mod.fit_size(preferred, self._screen))
+        logger = getattr(self.service, "logger", None)
+        if logger is not None:
+            logger.info(
+                "экран: доступно %sx%s; окно %sx%s (минимум %sx%s); компактный режим: %s",
+                self._screen[0], self._screen[1], self.width(), self.height(),
+                minimum_width, minimum_height, "да" if self._compact else "нет",
+            )
 
     # ------------------------------------------------------------------ ui setup
     def _build_header(self) -> QWidget:
@@ -217,6 +259,8 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(self.status_strip)
 
         self.tabs = QTabWidget()
+        self.tabs.setUsesScrollButtons(True)          # иначе суммарная ширина вкладок задаёт минимум окна
+        self.tabs.tabBar().setElideMode(Qt.ElideRight)
         right_layout.addWidget(self.tabs, 1)
 
         # --- mods tab
@@ -234,22 +278,35 @@ class MainWindow(QMainWindow):
         for text, short, slot, tip in (
             ("Вверх", "Вверх", lambda: self._move_selected(-1), "Выше в списке — ниже приоритет"),
             ("Вниз", "Вниз", lambda: self._move_selected(1), "Ниже в списке — выше приоритет"),
-            ("Включить все", "Вкл. все", lambda: self._set_all(True), "Включить все моды профиля"),
-            ("Отключить все", "Откл. все", lambda: self._set_all(False), "Отключить все моды профиля"),
-            ("Убрать из профиля", "Убрать", self.remove_mod, "Убрать мод из профиля"),
-            ("Удалить файлы", "Удалить файлы", self.delete_mod_files,
-             "Убрать и удалить распакованные файлы мода"),
         ):
             button = make_button(short if self._compact else text)
             button.clicked.connect(slot)
             button.setToolTip(tip)
             mod_buttons.addWidget(button)
+        bulk = (
+            ("Включить все", lambda: self._set_all(True)),
+            ("Отключить все", lambda: self._set_all(False)),
+            ("Убрать из профиля", self.remove_mod),
+            ("Удалить файлы", self.delete_mod_files),
+        )
+        self._mod_menu = None
+        if self._compact:
+            # six buttons need ~570 px; on a small screen they collapse into one menu
+            self._mod_menu = make_menu_button("Ещё ▾", bulk, tooltip="Действия с модами профиля")
+            mod_buttons.addWidget(self._mod_menu)
+        else:
+            for text, slot in bulk:
+                button = make_button(text)
+                button.clicked.connect(slot)
+                mod_buttons.addWidget(button)
         mod_buttons.addStretch(1)
-        self.hint_label = QLabel("Чем ниже мод в списке, тем выше его приоритет (его файлы побеждают).")
+        # A QLabel with plain text demands its full width from the layout, which alone pushed the
+        # window minimum past a 1024 px screen; the status bar elides instead.
+        self.hint_label = QLabel(self._mod_hint(False))
         self.hint_label.setObjectName("dim")
-        self.hint_label.setVisible(not self._compact)
-        self.mod_table.setToolTip("Чем ниже мод в списке, тем выше его приоритет (его файлы побеждают).")
-        mod_buttons.addWidget(self.hint_label)
+        self.hint_label.setToolTip("Чем ниже мод в списке, тем выше его приоритет (его файлы побеждают).")
+        self.mod_table.setToolTip(self.hint_label.toolTip())
+        self.statusBar().addPermanentWidget(self.hint_label)
         mods_layout.addLayout(mod_buttons)
         self.tabs.addTab(mods_tab, "Моды и приоритет")
 
@@ -261,17 +318,26 @@ class MainWindow(QMainWindow):
         diag_tab = QWidget()
         diag_layout = QVBoxLayout(diag_tab)
         diag_buttons = QHBoxLayout()
-        for text, slot in (
+        diag_actions = (
             ("Игровой лог", self.open_game_log),
             ("Дампы", self.open_dumps),
             ("Каталог профиля", lambda: self.open_path("root")),
             ("Данные профиля", lambda: self.open_path("appdata")),
             ("Папка модов", lambda: self.open_path("mods")),
             ("Журнал лаунчера", self.open_launcher_log),
-        ):
-            button = make_button(text)
-            button.clicked.connect(slot)
-            diag_buttons.addWidget(button)
+        )
+        self._diag_menu = None
+        if self._compact:
+            # this row alone wants ~830 px - impossible on a 1024 px screen
+            self._diag_menu = make_menu_button(
+                "Открыть ▾", diag_actions, tooltip="Открыть каталоги профиля и логи"
+            )
+            diag_buttons.addWidget(self._diag_menu)
+        else:
+            for text, slot in diag_actions:
+                button = make_button(text)
+                button.clicked.connect(slot)
+                diag_buttons.addWidget(button)
         diag_buttons.addStretch(1)
         diag_layout.addLayout(diag_buttons)
         self.diag_view = QPlainTextEdit()
@@ -364,9 +430,7 @@ class MainWindow(QMainWindow):
         self.launch_button.setEnabled(self._session_thread is None)
         self.mod_table.set_mods(profile)
         self.hint_label.setText(
-            "Чем ниже мод в списке, тем выше его приоритет (его файлы побеждают)."
-            if not profile.is_standalone
-            else "Профиль-сборка: файлы модов не подключаются, запускается только игра."
+            self._mod_hint(profile.is_standalone)
         )
         self.status_strip.headline.setText(profile.name)
         self.status_strip.detail.setText(summary_line(profile))
@@ -1004,6 +1068,43 @@ class MainWindow(QMainWindow):
         if not getattr(self, "_sizes_applied", False):
             self.splitter.setSizes([360, max(320, self.width() - 380)])
             self._sizes_applied = True
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
+        super().showEvent(event)
+        if not self._geometry_checked:
+            self._geometry_checked = True
+            QTimer.singleShot(0, self._ensure_on_screen)
+
+    def _ensure_on_screen(self) -> None:
+        """Keep the *decorated* window inside the available area.
+
+        A window manager adds a title bar and may ignore our preferred size; after the first paint
+        the real frame is known, so the window is trimmed and pulled back if needed.
+        """
+        for _ in range(3):
+            rect = geometry_mod.available_rect()
+            right, bottom = rect[0] + rect[2], rect[1] + rect[3]
+            frame = self.frameGeometry()
+            over_width = max(0, frame.width() - rect[2])
+            over_height = max(0, frame.height() - rect[3])
+            outside_x = max(0, rect[0] - frame.x()) + max(0, frame.x() + frame.width() - right)
+            outside_y = max(0, rect[1] - frame.y()) + max(0, frame.y() + frame.height() - bottom)
+            if not (over_width or over_height or outside_x or outside_y):
+                return
+            if over_width or over_height:
+                self.resize(
+                    max(1, self.width() - over_width),
+                    max(1, self.height() - over_height),
+                )
+            frame = self.frameGeometry()
+            dx = self.x() - frame.x()
+            dy = self.y() - frame.y()
+            x = min(max(frame.x(), rect[0]), max(rect[0], right - frame.width()))
+            y = min(max(frame.y(), rect[1]), max(rect[1], bottom - frame.height()))
+            self.move(x + dx, y + dy)
+        logger = getattr(self.service, "logger", None)
+        if logger is not None:
+            logger.info("окно подогнано под экран: %sx%s", self.width(), self.height())
 
     def _restore_geometry(self) -> None:
         geometry = getattr(self.settings, "window_geometry", "")

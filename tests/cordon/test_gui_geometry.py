@@ -106,8 +106,12 @@ def test_main_window_fits_a_1024x768_screen(qt_app, gui_service, monkeypatch):
     assert window.width() <= screen[0] and window.height() <= screen[1]
     assert window.minimumWidth() <= screen[0] and window.minimumHeight() <= screen[1]
     assert window._compact is True, "на 1024x768 включается компактный режим"
-    # compact mode hides the duplicate text buttons but keeps the launch controls
-    assert window.hint_label.isVisible() is False
+    # compact mode folds the long button rows into "Ещё ▾" menus and keeps the launch controls
+    assert window._mod_menu is not None and window._diag_menu is not None
+    assert window._mod_menu.menu().actions(), "в меню модов должны быть действия"
+    labels = [action.text() for action in window._mod_menu.menu().actions()]
+    assert "Удалить файлы" in labels, "в компактном режиме ничего не теряется"
+    assert window.hint_label.text() == "Ниже в списке — выше приоритет", "короткая подсказка"
     assert window.launch_button.isEnabled() and window.launch_action.shortcut().toString() == "F9"
     window.close()
 
@@ -122,8 +126,9 @@ def test_main_window_keeps_the_full_layout_on_a_big_screen(qt_app, gui_service, 
     window = MainWindow(gui_service, profile_id=gui_service.settings.selected_profile_id)
     assert (window.width(), window.height()) == (1280, 820)
     assert window._compact is False
-    assert window.hint_label.isVisible() is False, "до показа окна виджет ещё не отрисован"
-    assert window.hint_label.isHidden() is False
+    assert window.hint_label.isHidden() is False, "подсказка живёт в строке состояния"
+    assert window.hint_label.text().startswith("Чем ниже мод в списке"), "на большом экране текст полный"
+    assert window._mod_menu is None and window._diag_menu is None, "на большом экране меню не нужны"
     window.close()
 
 
@@ -150,3 +155,62 @@ def test_dialogs_fit_a_1024x768_screen(qt_app, fake_install, monkeypatch):
         hint = dialog.minimumSizeHint()
         assert hint.width() <= screen[0], f"{type(dialog).__name__} требует больше ширины, чем есть"
         dialog.close()
+
+
+def test_window_content_never_needs_more_room_than_the_window(qt_app, gui_service, monkeypatch):
+    """The real bug behind the report: the layout demanded 1153 px on a 1024 px screen."""
+    monkeypatch.setenv("CORDON_SCREEN", "1024x768")
+    try:
+        from cordon.gui.main_window import MainWindow
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"PySide6 недоступен: {exc}")
+
+    window = MainWindow(gui_service, profile_id=gui_service.settings.selected_profile_id)
+    need = window.minimumSizeHint()
+    assert need.width() <= window.width(), "содержимое не должно требовать больше ширины, чем окно"
+    assert need.height() <= window.height()
+    assert need.width() <= 1024, "и в любом случае не шире самого экрана"
+    # the compact UI collapses long button rows into menus
+    assert window._compact is True
+    window.close()
+
+
+def test_available_rect_and_describe(monkeypatch):
+    monkeypatch.setenv("CORDON_SCREEN", "1024x768")
+    assert geometry.available_rect() == (0, 0, 1024, 768)
+    text = geometry.describe()
+    assert "1024x768" in text and "992x696" in text and "компактный режим: да" in text
+
+
+def test_ensure_on_screen_trims_a_restored_oversized_window(qt_app, gui_service, monkeypatch):
+    monkeypatch.setenv("CORDON_SCREEN", "1024x768")
+    try:
+        from cordon.gui.main_window import MainWindow
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"PySide6 недоступен: {exc}")
+
+    window = MainWindow(gui_service, profile_id=gui_service.settings.selected_profile_id)
+    # pretend the window manager ignores our request and the window is larger than the screen
+    window.setMaximumSize(4096, 4096)
+    window.resize(2000, 1600)
+    window.move(-200, -300)
+    window._ensure_on_screen()
+    assert window.width() <= 1024 and window.height() <= 768
+    assert window.x() >= 0 and window.y() >= 0
+    window.close()
+
+
+def test_statusbar_hosts_the_progress_and_hint(qt_app, gui_service, monkeypatch):
+    """Both live in the status bar now: previously the progress bar was added to a status bar
+    that was immediately replaced, so it never appeared."""
+    monkeypatch.setenv("CORDON_SCREEN", "1920x1080")
+    try:
+        from cordon.gui.main_window import MainWindow
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"PySide6 недоступен: {exc}")
+
+    window = MainWindow(gui_service, profile_id=gui_service.settings.selected_profile_id)
+    bar = window.statusBar()
+    assert window.progress.parent() is bar or bar.isAncestorOf(window.progress)
+    assert bar.isAncestorOf(window.hint_label)
+    window.close()

@@ -286,3 +286,27 @@ __all__ = [
     "make_button",
     "summary_line",
 ]
+
+
+def make_menu_button(text: str, entries, *, tooltip: str = "", object_name: str = "menuButton"):
+    """A ``QToolButton`` with a dropdown menu.
+
+    Small screens cannot afford a row of six buttons, so groups of rarely used actions collapse
+    into one menu button instead of being dropped.
+    """
+    from PySide6.QtWidgets import QMenu, QToolButton
+
+    button = QToolButton()
+    button.setText(text)
+    button.setObjectName(object_name)
+    button.setPopupMode(QToolButton.InstantPopup)
+    menu = QMenu(button)
+    for entry in entries:
+        label, slot = entry if isinstance(entry, (tuple, list)) else (entry.text(), entry.triggered)
+        action = menu.addAction(label)
+        if slot is not None:
+            action.triggered.connect(slot)
+    button.setMenu(menu)
+    if tooltip:
+        button.setToolTip(tooltip)
+    return button
