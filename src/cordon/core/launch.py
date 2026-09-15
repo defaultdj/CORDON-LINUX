@@ -74,7 +74,12 @@ def build_launch_plan(
     game_args: list[str] = []
     # A standalone build launched by the native OpenXRay gets an overlay with the engine's data
     # merged in (see layers.build_plan) — then it is started exactly like a mods profile.
-    merged_standalone = profile.is_standalone and os.path.isfile(space.manifest_path) and os.path.isfile(space.fsgame_path)
+    merged_standalone = (
+        profile.is_standalone
+        and not is_windows
+        and os.path.isfile(space.manifest_path)
+        and os.path.isfile(space.fsgame_path)
+    )
     if profile.is_standalone and not merged_standalone:
         cwd = util.norm(profile.game_path) or info.engine_root
         if profile.isolate_appdata and os.path.isfile(space.fsgame_path):
@@ -279,7 +284,10 @@ def prepare_launch(
     """Build the overlay (if needed) and return the exact command line that *would* be run."""
     info = engine or engine_mod.require_engine(profile)
     workspace = ProfileWorkspace(app, profile, logger=logger)
-    layer_plan = plan or layers.build_plan(profile, engine_data_path=info.data_root)
+    # The engine data layer (GL shaders from /usr/share/openxray) is only for the native OpenXRay;
+    # a Windows .exe under Proton/Wine ships its own data and always runs in place.
+    engine_data = "" if engine_mod._is_exe(info) else info.data_root
+    layer_plan = plan or layers.build_plan(profile, engine_data_path=engine_data)
     if layers.needs_overlay(profile, layer_plan):
         if not layer_plan.entries:
             layer_plan.index(progress)

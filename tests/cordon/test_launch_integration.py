@@ -370,3 +370,27 @@ def test_standalone_native_run_merges_engine_data(fake_install, tmp_path, monkey
     with pytest.raises(launch.LaunchError):  # no Wine in the isolated PATH — but the overlay reset happens first
         launch.prepare_launch(profile, fake_install.store, engine=exe)
     assert not os.path.isfile(workspace.manifest_path) and not os.path.isfile(workspace.fsgame_path)
+
+
+def test_standalone_exe_never_gets_engine_overlay(fake_install, tmp_path, monkeypatch):
+    """Regression: an .exe engine whose EngineInfo carries the system data root must still run in place.
+
+    Otherwise the launcher builds a merged overlay and passes ``-fsltx Z:\\...\\fsgame.ltx`` to
+    xrEngine.exe, which fails with «Cannot open file fsgame.ltx».
+    """
+    import os
+
+    from cordon.core import launch, layers
+    from cordon.core.models import Profile
+
+    _isolated_runners(monkeypatch, tmp_path)
+    profile = Profile(id="s2", name="Сборка", kind="standalone", game_path=fake_install.game)
+    exe = _fake_exe_info(fake_install)
+    exe.data_root = fake_install.engine_data  # what find_engine() may report on a system with openxray installed
+    workspace = launch.ProfileWorkspace(fake_install.store, profile)
+    with pytest.raises(launch.LaunchError):  # no Wine in PATH; the overlay decision happens before that
+        launch.prepare_launch(profile, fake_install.store, engine=exe)
+    assert not os.path.isfile(workspace.manifest_path)
+    assert not os.path.isfile(workspace.fsgame_path)
+    assert not os.path.exists(os.path.join(workspace.root, "gamedata", "shaders"))
+    assert layers.needs_overlay(profile, layers.build_plan(profile, engine_data_path=fake_install.engine_data))
