@@ -173,3 +173,20 @@ def test_alias_file_is_valid_json(fake_install, fake_profile, tmp_path):
     payload = json.loads(util.read_text(audit.aliases_path(root)))
     assert payload["schema"] == 1
     assert ["gamedata/A", "a"] in payload["aliases"]
+
+
+def test_preflight_warns_when_engine_shaders_are_missing(fake_install, fake_profile):
+    """Linux re-packs without gamedata/shaders abort in SelectRenderer (real Arch report)."""
+    plan = layers.build_plan(fake_profile, engine_data_path="")
+    plan.index()
+    report = preflight.run(fake_profile, fake_install.store, plan=plan)
+    assert report.ok, "отсутствие шейдеров не блокирует запуск, только предупреждает"
+    shader_warnings = [check for check in report.warnings if "шейдеры" in check.title.lower()]
+    assert shader_warnings, report.to_text()
+    assert "--engine-data" in shader_warnings[0].hint
+
+
+def test_preflight_finds_engine_shaders_in_the_plan(fake_install, fake_profile):
+    report = preflight.run(fake_profile, fake_install.store, plan=_plan(fake_install, fake_profile))
+    found = [check for check in report.checks if check.title == "Шейдеры движка найдены"]
+    assert found and found[0].detail.endswith(os.path.join("gamedata", "shaders"))

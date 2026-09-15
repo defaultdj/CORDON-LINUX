@@ -31,3 +31,7 @@ venv/
 
 # --- Arch-пакет (byproduct makepkg) ---
 packaging/arch/*.tar.gz
+
+# --- локальные артефакты для ручной доставки патчей ---
+/*.patch
+/apply-readme-linux-patch.sh

@@ -271,3 +271,34 @@ def test_classify_mod_recognises_archives_inside_a_mod(fake_install):
     assert "db" in layout.root_entries  # db/mods/extra.db is merged into the game's db tree
     assert layout.appdata_entries  # appdata/user.ltx + shaders_cache → _appdata_
     assert util.is_inside(layout.game_data_dir, layout.root)
+
+
+def test_find_engine_attaches_system_shaders_when_the_game_has_none(fake_install, fake_profile, monkeypatch, tmp_path):
+    """An unpacked game without gamedata/shaders gets the package directory as the lowest layer."""
+    share = tmp_path / "share" / "openxray"
+    (share / "gamedata" / "shaders" / "gl").mkdir(parents=True)
+    (share / "fsgame.ltx").write_text("[root]\n")
+    monkeypatch.setattr(engine_mod, "SYSTEM_DATA_DIRS", (str(share),))
+
+    fake_profile.engine_data_path = ""
+    fake_profile.game_path = fake_install.game          # unpacked gamedata, no shaders
+    assert not os.path.isdir(os.path.join(fake_install.game, "gamedata", "shaders"))
+
+    info = engine_mod.find_engine(fake_profile)
+    assert info is not None
+    assert info.data_root == util.norm(str(share)), "шейдеры движка должны стать нижним слоем"
+    assert info.fsgame_source == util.norm(os.path.join(fake_install.game, "fsgame.ltx")), \
+        "fsgame.ltx игры главнее шаблона из пакета движка"
+
+
+def test_find_engine_keeps_the_game_as_data_root_when_it_has_shaders(fake_install, fake_profile, monkeypatch, tmp_path):
+    util.ensure_dir(os.path.join(fake_install.game, "gamedata", "shaders", "gl"))
+    share = tmp_path / "share" / "openxray"
+    (share / "gamedata" / "shaders" / "gl").mkdir(parents=True)
+    monkeypatch.setattr(engine_mod, "SYSTEM_DATA_DIRS", (str(share),))
+
+    fake_profile.engine_data_path = ""
+    fake_profile.game_path = fake_install.game
+    info = engine_mod.find_engine(fake_profile)
+    assert info is not None
+    assert info.data_root == util.norm(fake_install.game), "собственные шейдеры игры не подменяются"

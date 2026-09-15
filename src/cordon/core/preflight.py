@@ -131,6 +131,7 @@ def run(
     _check_game(profile, report)
     _check_engine(profile, report, engine)
     _check_fsgame(profile, report, plan, workspace)
+    _check_shaders(profile, report, plan)
     _check_backend(profile, report, plan)
     _check_mods(profile, report)
     _check_paths(profile, app, report)
@@ -244,6 +245,33 @@ def _check_fsgame(profile: Profile, report: PreflightReport, plan: LayerPlan | N
         "fsgame.ltx не найден ни в игре, ни в модах",
         hint="Будет использован встроенный шаблон с $fs_root$-относительными путями. "
              "Для крупных сборок лучше положить оригинальный fsgame.ltx рядом с gamedata.",
+    )
+
+
+def _check_shaders(profile: Profile, report: PreflightReport, plan: LayerPlan | None) -> None:
+    """Without ``gamedata/shaders`` the OpenGL renderer cannot start.
+
+    ``CEngineAPI::SelectRenderer`` aborts with "No shaders found for OpenGL" when neither the game
+    nor the engine data directory provides them, which is exactly what unpacked Linux re-packs
+    look like until the distribution package (``/usr/share/openxray``) is attached.
+    """
+    if profile.is_standalone:
+        return
+    roots: list[str] = []
+    if plan is not None:
+        roots.extend(layer.path for layer in sorted(plan.layers, key=lambda item: item.priority))
+    elif profile.game_path:
+        roots.append(util.norm(profile.game_path))
+    for root in roots:
+        candidate = os.path.join(root, "gamedata", "shaders")
+        if os.path.isdir(candidate):
+            report.add(LEVEL_OK, "Шейдеры движка найдены", candidate)
+            return
+    report.add(
+        LEVEL_WARNING,
+        "Не найдены шейдеры движка (gamedata/shaders)",
+        hint="OpenXRay остановится с «No shaders found for OpenGL» и не сможет выбрать рендерер. "
+             "Подключите каталог данных движка: cordon edit \"<профиль>\" --engine-data /usr/share/openxray",
     )
 
 

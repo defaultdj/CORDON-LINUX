@@ -190,12 +190,22 @@ def find_engine(profile: Profile, *, extra_roots: tuple[str, ...] = ()) -> Engin
     if not data_root:
         if os.path.isfile(os.path.join(game_root, FSGAME_NAME)) or os.path.isdir(os.path.join(game_root, "gamedata")):
             data_root = game_root
+            # Linux re-packs often ship an unpacked ``gamedata`` without the engine shaders; the
+            # distribution package keeps them in ``/usr/share/openxray``. Without that layer the
+            # engine aborts in ``CEngineAPI::SelectRenderer`` ("No shaders found for OpenGL"),
+            # so the system data directory is attached as the lowest layer.
+            if not os.path.isdir(os.path.join(game_root, "gamedata", "shaders")):
+                system_root = detect_system_data_root()
+                if system_root and os.path.isdir(os.path.join(system_root, "gamedata", "shaders")):
+                    data_root = system_root
         else:
             data_root = detect_system_data_root()
 
     fsgame_source = util.norm(profile.fsgame_source) if profile.fsgame_source else ""
     if not fsgame_source:
-        for base in (data_root, game_root, engine_root):
+        # The game's own fsgame.ltx wins: it describes this installation, while the engine data
+        # directory may carry a template pointing elsewhere.
+        for base in (game_root, data_root, engine_root):
             candidate = os.path.join(base, FSGAME_NAME) if base else ""
             if candidate and os.path.isfile(candidate):
                 fsgame_source = util.norm(candidate)
