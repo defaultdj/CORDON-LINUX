@@ -1068,10 +1068,9 @@ class MainWindow(QMainWindow):
         if not getattr(self, "_sizes_applied", False):
             self.splitter.setSizes([360, max(320, self.width() - 380)])
             self._sizes_applied = True
-
-    def showEvent(self, event) -> None:  # noqa: N802 - Qt API
-        super().showEvent(event)
         if not self._geometry_checked:
+            # The window manager may add a title bar or a border: check the real frame on the first
+            # paint, once, and pull the window back if it hangs over an edge.
             self._geometry_checked = True
             QTimer.singleShot(0, self._ensure_on_screen)
 
