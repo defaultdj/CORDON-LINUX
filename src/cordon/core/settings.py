@@ -170,7 +170,7 @@ class SettingsStore:
 
     # ------------------------------------------------------------------ helpers
     def export_profile(self, profile_payload: dict, target: str) -> str:
-        payload = {"application": "CORDON-LINUX", "version": SCHEMA_VERSION, "profile": profile_payload}
+        payload = {"application": "CordonIX", "version": SCHEMA_VERSION, "profile": profile_payload}
         util.write_json_atomic(target, payload)
         return util.norm(target)
 

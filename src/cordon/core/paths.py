@@ -163,7 +163,7 @@ def guard_owned_directory(app: AppPaths, path: str, *, marker: str) -> str:
     target = util.norm(path)
     if not app.is_owned(target, marker=marker):
         raise SafetyError(
-            "операция отменена: каталог не помечен как созданный CORDON-LINUX "
+            "операция отменена: каталог не помечен как созданный CordonIX "
             f"({target}). Удалите его вручную, если он больше не нужен."
         )
     return target

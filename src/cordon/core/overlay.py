@@ -418,7 +418,7 @@ class ProfileWorkspace:
     def _write_default_user_ltx(path: str) -> None:
         util.write_text_atomic(
             path,
-            "; CORDON-LINUX: файл создан лаунчером при первом запуске профиля.\n"
+            "; CordonIX: файл создан лаунчером при первом запуске профиля.\n"
             "; Настройки графики, звука и управления записываются сюда движком.\n",
         )
 

@@ -106,7 +106,7 @@ def build_report_text(
     extra_notes: list[str] | None = None,
 ) -> str:
     lines = [
-        "CORDON-LINUX — отчёт о состоянии профиля",
+        "CordonIX — отчёт о состоянии профиля",
         "=" * 46,
         f"Профиль:        {profile_name}",
         f"Движок:         {engine_summary or '—'}",

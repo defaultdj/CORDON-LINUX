@@ -1,10 +1,10 @@
-# Maintainer: CORDON-LINUX contributors
+# Maintainer: CordonIX contributors
 # Сборка: cd packaging/arch && makepkg -si
 # Пакет собирается из локальной копии репозитория: prepare() делает git archive текущего HEAD.
-pkgname=cordon-linux
-pkgver=0.1.0
+pkgname=cordonix
+pkgver=0.2.0
 pkgrel=1
-pkgdesc="Лаунчер профилей и модов S.T.A.L.K.E.R. для Linux (движок OpenXRay)"
+pkgdesc="Лаунчер профилей и модов S.T.A.L.K.E.R. для UNIX/Linux (OpenXRay / Proton)"
 arch=('any')
 url="https://github.com/defaultdj/CORDON-LINUX"
 license=('GPL-3.0-only')
@@ -26,7 +26,6 @@ source=("$pkgname-$pkgver.tar.gz::$pkgname.tar.gz")
 sha256sums=('SKIP')
 
 prepare() {
-  # всегда свежий архив из текущего HEAD рабочей копии (файл попадает в .gitignore)
   ( cd ../.. && git archive --format=tar.gz -o "packaging/arch/$pkgname.tar.gz" HEAD )
   mkdir -p "$srcdir/$pkgname-$pkgver"
   tar -xzf "$pkgname.tar.gz" -C "$srcdir/$pkgname-$pkgver"
@@ -34,20 +33,18 @@ prepare() {
 
 build() {
   cd "$srcdir/$pkgname-$pkgver"
-  # --no-isolation: setuptools и wheel берутся из makedepends, сеть при сборке не нужна
   python -m build --wheel --no-isolation
 }
 
 package() {
   cd "$srcdir/$pkgname-$pkgver"
 
-  # console_scripts из pyproject.toml (cordon, cordon-gui) python-installer кладёт в /usr/bin
   python -m installer --destdir="$pkgdir" dist/*.whl
 
-  install -Dm644 packaging/cordon-linux.desktop \
-    "$pkgdir/usr/share/applications/cordon-linux.desktop"
-  install -Dm644 packaging/cordon-linux.svg \
-    "$pkgdir/usr/share/icons/hicolor/scalable/apps/cordon-linux.svg"
+  install -Dm644 packaging/cordonix.desktop \
+    "$pkgdir/usr/share/applications/cordonix.desktop"
+  install -Dm644 packaging/cordonix.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/cordonix.svg"
 
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
   install -Dm644 docs/USER_GUIDE_LINUX_RU.md \

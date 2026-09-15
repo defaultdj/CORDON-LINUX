@@ -23,7 +23,7 @@ ALIAS_RE = re.compile(r"^\s*(\$[A-Za-z0-9_]+\$)\s*=\s*(.*?)\s*$")
 #: Fallback template used when neither the game nor a mod ships its own ``fsgame.ltx``.
 #: Alias names are part of the X-Ray format; the layout below mirrors a standard installation
 #: with everything relative to ``$fs_root$`` (the directory of this file).
-DEFAULT_TEMPLATE = """; CORDON-LINUX generated fsgame.ltx
+DEFAULT_TEMPLATE = """; CordonIX generated fsgame.ltx
 ;abbreviation           = recurs|notif|  root|                  add|        ext|            description
 $app_data_root$         = true|  false| $fs_root$|            _appdata_\\
 $arch_dir$              = false| false| $fs_root$

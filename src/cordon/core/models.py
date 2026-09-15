@@ -98,6 +98,8 @@ class Profile:
     created_at: str | None = None
     use_overlay_path: bool = True
     isolate_appdata: bool = True
+    prefer_native_openxray: bool = True
+    auto_proton_fallback: bool = True
 
     # ------------------------------------------------------------------ helpers
     @property
@@ -117,7 +119,9 @@ class Profile:
 
     @property
     def playtime_display(self) -> str:
-        return util.human_duration(self.total_playtime_seconds) if self.total_playtime_seconds else "—"
+        if not self.total_playtime_seconds or self.total_playtime_seconds <= 0:
+            return "0 мин"
+        return util.human_duration(self.total_playtime_seconds)
 
     @property
     def last_played_display(self) -> str:
@@ -163,6 +167,8 @@ class Profile:
             created_at=payload.get("created_at"),
             use_overlay_path=bool(payload.get("use_overlay_path", True)),
             isolate_appdata=bool(payload.get("isolate_appdata", True)),
+            prefer_native_openxray=bool(payload.get("prefer_native_openxray", True)),
+            auto_proton_fallback=bool(payload.get("auto_proton_fallback", True)),
         )
         profile.normalize()
         return profile

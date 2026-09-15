@@ -37,7 +37,7 @@ EXIT_BLOCKED = 2
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cordon",
-        description="CORDON-LINUX — лаунчер профилей и модов S.T.A.L.K.E.R. для Linux (движок OpenXRay)",
+        description="CordonIX — лаунчер профилей и модов S.T.A.L.K.E.R. для UNIX/Linux (OpenXRay / Proton)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Примеры:\n"
                "  cordon list\n"
@@ -45,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
                "  cordon launch \"Anomaly 1.5.2\" --dry-run\n"
                "  cordon doctor \"Anomaly 1.5.2\"\n",
     )
-    parser.add_argument("--version", action="version", version=f"CORDON-LINUX {__version__}")
+    parser.add_argument("--version", action="version", version=f"CordonIX {__version__}")
     parser.add_argument("--config-dir", default="", help="каталог настроек (по умолчанию XDG)")
     parser.add_argument("--data-dir", default="", help="каталог данных (профили, моды)")
     parser.add_argument("--cache-dir", default="", help="каталог кэша (журнал лаунчера)")
@@ -213,7 +213,7 @@ def _service(args) -> CordonService:
             cache_dir=args.cache_dir or None,
         )
     logger, _memory = launcherlog.setup_logging(app, console=args.verbose)
-    logger.info("CORDON-LINUX %s: команда %s", __version__, args.command)
+    logger.info("CordonIX %s: команда %s", __version__, args.command)
     service = CordonService(app, logger=logger)
     service.load()
     for notice in service.notices:
@@ -390,6 +390,14 @@ def cmd_mod_add(args, service: CordonService) -> int:
             expanded.extend(found or [target])
         else:
             expanded.append(target)
+    for p in expanded:
+        if os.path.isdir(p):
+            indicators = xray.detect_standalone_mod_indicators(p)
+            if indicators:
+                print(
+                    f"Предупреждение: папка «{os.path.basename(p)}» содержит {', '.join(indicators)} — "
+                    "это похоже на готовую сборку, а не на мод (создайте профиль с --kind standalone)."
+                )
     added = service.add_mods_from_folders(profile, expanded)
     print(f"Добавлено модов: {added}")
     return EXIT_OK

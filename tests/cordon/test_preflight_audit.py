@@ -175,6 +175,21 @@ def test_alias_file_is_valid_json(fake_install, fake_profile, tmp_path):
     assert ["gamedata/A", "a"] in payload["aliases"]
 
 
+def test_preflight_warns_when_mod_looks_like_standalone(fake_install, fake_profile, tmp_path):
+    mod_path = str(tmp_path / "standalone_mod")
+    util.ensure_dir(mod_path)
+    util.write_text_atomic(os.path.join(mod_path, "fsgame.ltx"), "; fsgame")
+    util.ensure_dir(os.path.join(mod_path, "bin"))
+    util.ensure_dir(os.path.join(mod_path, "levels"))
+    fake_profile.mods.append(ModEntry(id="standalone_mod", name="Gunslinger Build", path=mod_path))
+    report = preflight.run(fake_profile, fake_install.store, plan=_plan(fake_install, fake_profile))
+    standalone_warnings = [check for check in report.warnings if "готов" in check.title.lower() or "сборку" in check.title.lower()]
+    assert standalone_warnings, report.to_text()
+    assert "fsgame.ltx" in standalone_warnings[0].detail
+    assert "bin/" in standalone_warnings[0].detail
+    assert "levels/" in standalone_warnings[0].detail
+
+
 def test_preflight_warns_when_engine_shaders_are_missing(fake_install, fake_profile):
     """Linux re-packs without gamedata/shaders abort in SelectRenderer (real Arch report)."""
     plan = layers.build_plan(fake_profile, engine_data_path="")

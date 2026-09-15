@@ -412,4 +412,3 @@ CORDON_SCREEN=1024x768 cordon-gui
 
 * Общие вопросы по порту — `README.md`.
 * Внутреннее устройство и точки расширения — `docs/TECHNICAL_LINUX_EN.md`.
-* Оригинальный лаунчер для Windows и его документация — `README.WINDOWS.md`, `docs/TECHNICAL_EN.md`.

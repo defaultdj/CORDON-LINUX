@@ -1,23 +1,4 @@
-bin/
-obj/
-.vs/
-*.user
-*.suo
-TestResults/
-publish/
-.external/
-native/**/build*/
-research/**/build*/
-session-ses_*.md
-opencode.txt
-AGENTS.md
-docs/RELEASE_NOTES_v*.md
-/ModLauncherLogo*.png
-/radiation_*.png
-/icon.png
-/ui
-
-# --- Python port (CORDON-LINUX) ---
+# --- Python / CORDON-LINUX ---
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -31,7 +12,9 @@ venv/
 
 # --- Arch-пакет (byproduct makepkg) ---
 packaging/arch/*.tar.gz
+packaging/arch/*.pkg.tar.*
+packaging/arch/src/
+packaging/arch/pkg/
 
-# --- локальные артефакты для ручной доставки патчей ---
+# --- локальные патчи и артефакты ---
 /*.patch
-/apply-readme-linux-patch.sh

@@ -82,10 +82,10 @@ def test_install_script_installs_the_menu_entry_into_the_prefix():
     assert 'DESKTOP_DIR="${PREFIX}/share/applications"' in script
     assert 'ICON_DIR="${PREFIX}/share/icons/hicolor/scalable/apps"' in script
     # Exec/TryExec обязаны указывать на эту установку, а не на команду из PATH
-    assert "Exec=${PREFIX}/bin/cordon-gui" in script
-    assert "TryExec=${PREFIX}/bin/cordon-gui" in script
+    assert "Exec=${PREFIX}/bin/cordonix" in script
+    assert "TryExec=${PREFIX}/bin/cordonix" in script
     # файл попадает на место через install и с нормальными правами
-    assert re.search(r"install -m 644 .*cordon-linux\.desktop", script)
+    assert re.search(r"install -m 644 .*cordon.*\.desktop", script)
     # меню и кэш значков обновляются, если инструменты есть
     assert "update-desktop-database" in script
     assert "gtk-update-icon-cache" in script

@@ -125,7 +125,7 @@ def test_service_reports_on_disk_usage(fake_install):
     assert usage["files"] > 0 and usage["bytes"] > 0
     report_path = service.report(profile)
     assert os.path.isfile(report_path)
-    assert "CORDON-LINUX" in util.read_text(report_path)
+    assert "CordonIX" in util.read_text(report_path)
 
 
 def test_service_status_and_conflicts(fake_install):
@@ -211,10 +211,10 @@ def test_cli_help_and_version(capsys):
     with pytest.raises(SystemExit) as help_exit:
         cli.main(["--help"])
     assert help_exit.value.code == 0
-    assert "CORDON-LINUX" in capsys.readouterr().out
+    assert "CordonIX" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         cli.main(["--version"])
-    assert "CORDON-LINUX" in capsys.readouterr().out
+    assert "CordonIX" in capsys.readouterr().out
 
 
 def test_cli_full_cycle(isolated_cli_env, fake_install, capsys):

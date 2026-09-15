@@ -243,3 +243,59 @@ def require_engine(profile: Profile) -> EngineInfo:
             "установки OpenXRay) в настройках профиля, либо выберите исполняемый файл вручную."
         )
     return info
+
+
+def find_native_fallback_engine(profile: Profile) -> EngineInfo | None:
+    """Find system native OpenXRay engine for native launch attempts."""
+    native_bin = detect_system_binary()
+    if not native_bin or not os.path.isfile(native_bin):
+        return None
+    binary = elf.inspect(native_bin)
+    if binary.kind != "elf":
+        return None
+    game_root = util.norm(profile.game_path) if profile.game_path else ""
+    data_root = util.norm(profile.engine_data_path) if profile.engine_data_path else (detect_system_data_root() or game_root)
+    fsgame_source = ""
+    for base in (game_root, data_root):
+        candidate = os.path.join(base, FSGAME_NAME) if base else ""
+        if candidate and os.path.isfile(candidate):
+            fsgame_source = util.norm(candidate)
+            break
+    return EngineInfo(
+        executable=native_bin,
+        binary=binary,
+        engine_root=util.norm(os.path.dirname(native_bin)),
+        game_root=game_root,
+        data_root=data_root,
+        fsgame_source=fsgame_source,
+        source="системный OpenXRay",
+        game_id=profile.game_id,
+    )
+
+
+def find_windows_fallback_engine(profile: Profile) -> EngineInfo | None:
+    """Find Windows .exe engine candidate in the profile's game/engine paths for Proton/Wine fallback."""
+    game_root = util.norm(profile.game_path) if profile.game_path else ""
+    engine_root = util.norm(profile.engine_path) if profile.engine_path else game_root
+    for root in (engine_root, game_root):
+        if not root or not os.path.isdir(root):
+            continue
+        for sub in ("", "bin", "bin_x64", "engine"):
+            directory = os.path.join(root, sub) if sub else root
+            if not os.path.isdir(directory):
+                continue
+            for name in util.entry_names(directory):
+                if name.lower().endswith(".exe"):
+                    candidate = os.path.join(directory, name)
+                    if os.path.isfile(candidate):
+                        binary = elf.inspect(candidate)
+                        return EngineInfo(
+                            executable=util.norm(candidate),
+                            binary=binary,
+                            engine_root=directory,
+                            game_root=game_root,
+                            data_root=game_root,
+                            source="windows fallback .exe",
+                            game_id=profile.game_id,
+                        )
+    return None

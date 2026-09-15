@@ -1,4 +1,4 @@
-"""CORDON-LINUX - a Linux port of the CORDON S.T.A.L.K.E.R. mod launcher, tuned for OpenXRay.
+"""CordonIX - a UNIX/Linux port of the CORDON S.T.A.L.K.E.R. mod launcher.
 
 The package is split into three layers:
 
@@ -10,14 +10,14 @@ The package is split into three layers:
 Upstream CORDON (Windows/WPF) writes its own profile workspace by hard-linking the game
 tree and by rewriting ``fsgame.ltx``.  This port does the same job with POSIX primitives
 (symlinks, optional FUSE overlays) and uses the switches that the OpenXRay engine actually
-provides on Linux (``-fsltx``, ``-overlaypath``, ``-shoc``/``-cs``).
+provides on Linux (``-fsltx``, ``-overlaypath``, ``-cs``) plus automatic Proton/Wine fallback.
 """
 
 from __future__ import annotations
 
 __all__ = ["__version__", "APP_NAME", "UPSTREAM_VERSION"]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
-APP_NAME = "CORDON-LINUX"
+APP_NAME = "CordonIX"
 UPSTREAM_VERSION = "1.4.5"

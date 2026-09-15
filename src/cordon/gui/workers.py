@@ -48,24 +48,76 @@ class SessionThread(QThread):
         self._stop_requested = False
 
     def run(self) -> None:  # pragma: no cover - needs a real game process
+        from ..core import engine as engine_mod
         from ..core.launch import finish_session, start_session
 
+        target_engine = engine_mod.find_engine(self._profile)
+        native_engine = (
+            engine_mod.find_native_fallback_engine(self._profile)
+            if getattr(self._profile, "prefer_native_openxray", True)
+            else None
+        )
+
+        use_native_first = (
+            native_engine is not None
+            and target_engine is not None
+            and target_engine.executable.lower().endswith(".exe")
+            and getattr(self._profile, "auto_proton_fallback", True)
+        )
+
+        active_engine = native_engine if use_native_first else target_engine
+
         try:
+            if use_native_first:
+                self.line.emit(f"… 🚀 Попытка нативного запуска через OpenXRay ({active_engine.executable})")
             self._session = start_session(
                 self._profile,
                 self._app,
                 force_rebuild=self._force,
                 progress=lambda text: self.line.emit(f"… {text}"),
                 logger=self._service.logger,
+                engine=active_engine,
             )
         except Exception as exc:  # noqa: BLE001
             self.failed.emit(str(exc))
             return
+
         self.started.emit(self._session.plan.command_line)
         self._session.add_line_callback(self.line.emit)
         while self._session.running() and not self._stop_requested:
             self.msleep(200)
+
         outcome = finish_session(self._session, self._app, logger=self._service.logger)
+
+        fallback_engine = None
+        if outcome.crashed and not self._stop_requested and getattr(self._profile, "auto_proton_fallback", True):
+            if use_native_first and target_engine and target_engine.executable.lower().endswith(".exe"):
+                fallback_engine = target_engine
+            elif active_engine and not active_engine.executable.lower().endswith(".exe"):
+                fallback_engine = engine_mod.find_windows_fallback_engine(self._profile)
+
+        if fallback_engine is not None and not self._stop_requested:
+            self.line.emit(
+                f"⚠️ Запуск нативного OpenXRay завершился с ошибкой (код {outcome.returncode}). "
+                f"Автоматический переключатель на Proton/Wine ({fallback_engine.executable})..."
+            )
+            try:
+                self._session = start_session(
+                    self._profile,
+                    self._app,
+                    force_rebuild=False,
+                    logger=self._service.logger,
+                    engine=fallback_engine,
+                )
+                self.started.emit(self._session.plan.command_line)
+                self._session.add_line_callback(self.line.emit)
+                while self._session.running() and not self._stop_requested:
+                    self.msleep(200)
+                outcome = finish_session(self._session, self._app, logger=self._service.logger)
+            except Exception as exc:  # noqa: BLE001
+                self.failed.emit(str(exc))
+                return
+
         self.finished.emit(int(outcome.returncode or 0), outcome.duration)
 
     def stop(self) -> None:

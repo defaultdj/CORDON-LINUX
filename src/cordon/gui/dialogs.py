@@ -16,12 +16,15 @@ from PySide6.QtWidgets import (
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -184,6 +187,18 @@ class ProfileDialog(QDialog):
         self.isolate_check = QCheckBox("Свои логи, сохранения и скриншоты у каждого профиля")
         self.isolate_check.setChecked(profile.isolate_appdata)
         flags_layout.addWidget(self.isolate_check)
+        self.prefer_openxray_check = QCheckBox("Сначала пробовать нативный OpenXRay (для сборок с .exe)")
+        self.prefer_openxray_check.setToolTip(
+            "Если в каталоге игры лежат .exe файлы, лаунчер сначала попробует запустить нативный OpenXRay для максимального FPS."
+        )
+        self.prefer_openxray_check.setChecked(getattr(profile, "prefer_native_openxray", True))
+        flags_layout.addWidget(self.prefer_openxray_check)
+        self.auto_fallback_check = QCheckBox("Автопереключение на Proton/Wine при ошибке OpenXRay")
+        self.auto_fallback_check.setToolTip(
+            "Если нативный OpenXRay завершится с ошибкой, лаунчер автоматически перезапустит игру через Proton/Wine."
+        )
+        self.auto_fallback_check.setChecked(getattr(profile, "auto_proton_fallback", True))
+        flags_layout.addWidget(self.auto_fallback_check)
         layout.addWidget(flags_box)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -280,6 +295,8 @@ class ProfileDialog(QDialog):
         profile.engine_flags = [flag for flag, check in self.flag_checks.items() if check.isChecked()]
         profile.use_overlay_path = self.overlay_path_check.isChecked()
         profile.isolate_appdata = self.isolate_check.isChecked()
+        profile.prefer_native_openxray = self.prefer_openxray_check.isChecked()
+        profile.auto_proton_fallback = self.auto_fallback_check.isChecked()
         profile.description = self.description_edit.toPlainText().strip()
         return profile
 
@@ -428,7 +445,7 @@ class Mo2Dialog(QDialog):
 
 
 class ReportDialog(QDialog):
-    """Plain text report with a copy button (used for conflicts, audits and diagnostics)."""
+    """Plain text report with copy and save buttons (used for conflicts, audits and diagnostics)."""
 
     def __init__(self, title: str, text: str, parent=None) -> None:
         super().__init__(parent)
@@ -441,6 +458,8 @@ class ReportDialog(QDialog):
         self.view.setLineWrapMode(QPlainTextEdit.NoWrap)
         layout.addWidget(self.view, 1)
         buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        save_button = buttons.addButton("Сохранить в файл...", QDialogButtonBox.ActionRole)
+        save_button.clicked.connect(self._save)
         copy_button = buttons.addButton("Копировать", QDialogButtonBox.ActionRole)
         copy_button.clicked.connect(self._copy)
         buttons.rejected.connect(self.reject)
@@ -451,6 +470,118 @@ class ReportDialog(QDialog):
         from PySide6.QtWidgets import QApplication
 
         QApplication.clipboard().setText(self.view.toPlainText())
+
+    def _save(self) -> None:
+        path, _filter = QFileDialog.getSaveFileName(
+            self,
+            "Сохранить отчёт",
+            os.path.expanduser("~/report.txt"),
+            "Текстовый файл (*.txt);;Markdown (*.md);;Все файлы (*)",
+        )
+        if path:
+            util.write_text_atomic(path, self.view.toPlainText())
+
+
+class ArchiveScannerDialog(QDialog):
+    """Dialog to scan a directory recursively for mod archives and select ones for installation."""
+
+    def __init__(self, start_dir: str = "", parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Поиск архивов с модами")
+        self.setMinimumWidth(geometry_mod.fit_width(760))
+        self.resize(*geometry_mod.fit_size((800, 500)))
+
+        self._selected_archives: list[str] = []
+        layout = QVBoxLayout(self)
+
+        form = QFormLayout()
+        self.path_edit = QLineEdit(start_dir or os.path.expanduser("~"))
+        self.path_edit.setPlaceholderText("выберите папку для поиска архивов модов")
+        form.addRow("Каталог поиска", _path_row(self.path_edit, self._pick_directory, "…"))
+        layout.addLayout(form)
+
+        self.table = QTableWidget(0, 4)
+        self.table.setHorizontalHeaderLabels(["Установить", "Имя файла", "Имя мода", "Размер"])
+        self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setAlternatingRowColors(True)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        layout.addWidget(self.table, 1)
+
+        self.summary_label = QLabel("Укажите каталог и нажмите «Сканировать».")
+        self.summary_label.setObjectName("dim")
+        layout.addWidget(self.summary_label)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Cancel)
+        self.scan_button = buttons.addButton("Сканировать", QDialogButtonBox.ActionRole)
+        self.scan_button.clicked.connect(self.scan)
+        self.install_button = buttons.addButton("Установить выбранные", QDialogButtonBox.AcceptRole)
+        self.install_button.setEnabled(False)
+        buttons.accepted.connect(self._accept_install)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+        if start_dir and os.path.isdir(start_dir):
+            self.scan()
+
+    def _pick_directory(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Выберите папку для поиска архивов", self.path_edit.text() or os.path.expanduser("~")
+        )
+        if path:
+            self.path_edit.setText(path)
+            self.scan()
+
+    def scan(self) -> None:
+        from ..core.mods import scan_archives_detailed
+
+        path = self.path_edit.text().strip()
+        if not path or not os.path.isdir(path):
+            QMessageBox.warning(self, "Каталог не найден", f"Указанный каталог не существует:\n{path}")
+            return
+        items = scan_archives_detailed(path)
+        self.table.setRowCount(0)
+        for item in items:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            check = QTableWidgetItem()
+            check.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+            check.setCheckState(Qt.Checked)
+            check.setData(Qt.UserRole, item.path)
+            self.table.setItem(row, 0, check)
+
+            name_item = QTableWidgetItem(item.name)
+            name_item.setToolTip(item.path)
+            self.table.setItem(row, 1, name_item)
+
+            stem_item = QTableWidgetItem(item.stem)
+            self.table.setItem(row, 2, stem_item)
+
+            size_item = QTableWidgetItem(item.size_display)
+            self.table.setItem(row, 3, size_item)
+
+        self.summary_label.setText(f"Найдено архивов: {len(items)}")
+        self.install_button.setEnabled(len(items) > 0)
+
+    def _accept_install(self) -> None:
+        self._selected_archives = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item and item.checkState() == Qt.Checked:
+                path = item.data(Qt.UserRole)
+                if path:
+                    self._selected_archives.append(str(path))
+        if not self._selected_archives:
+            QMessageBox.warning(self, "Архивы не выбраны", "Отметьте галочками архивы для установки.")
+            return
+        self.accept()
+
+    def selected_archives(self) -> list[str]:
+        return self._selected_archives
 
 
 def _mono():
@@ -468,7 +599,7 @@ class AboutDialog(QDialog):
         self.setMinimumWidth(geometry_mod.fit_width(560))
         layout = QVBoxLayout(self)
 
-        title = QLabel("CORDON-LINUX")
+        title = QLabel("CordonIX")
         title.setObjectName("headline")
         font = title.font()
         font.setPointSize(font.pointSize() + 6)
@@ -477,8 +608,8 @@ class AboutDialog(QDialog):
         layout.addWidget(title)
 
         text = QLabel(
-            f"Версия {version} · порт CORDON {UPSTREAM_VERSION} для Linux.\n"
-            "Лаунчер профилей и модов S.T.A.L.K.E.R. с поддержкой движка OpenXRay.\n\n"
+            f"Версия {version} · Форк CORDON {UPSTREAM_VERSION} для UNIX/Linux.\n"
+            "Лаунчер профилей и модов S.T.A.L.K.E.R. с поддержкой OpenXRay и Proton/Wine.\n\n"
             f"Оригинал: {upstream}\n"
             "Лицензия: GPL-3.0 (как и у оригинального проекта).\n\n"
             f"Настройки: {app.config_dir}\n"

@@ -14,8 +14,8 @@ import sys
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        prog="cordon-gui",
-        description="CORDON-LINUX — графический лаунчер профилей S.T.A.L.K.E.R. (движок OpenXRay)",
+        prog="cordonix",
+        description="CordonIX — графический лаунчер профилей S.T.A.L.K.E.R. для UNIX/Linux",
     )
     parser.add_argument("--portable", default="", metavar="DIR",
                         help="портативный режим: настройки, профили и моды внутри каталога")
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError as exc:  # pragma: no cover - depends on the environment
         print(
             "Для графического интерфейса нужен PySide6:\n"
-            "  pip install 'cordon-linux[gui]'\n"
+            "  pip install 'cordonix[gui]'\n"
             f"({exc})",
             file=sys.stderr,
         )
@@ -50,18 +50,16 @@ def main(argv: list[str] | None = None) -> int:
     from ..core.service import CordonService
 
     if args.version:
-        print(f"CORDON-LINUX {__version__}")
+        print(f"CordonIX {__version__}")
         return 0
 
     QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
     app = QApplication(argv)
-    app.setApplicationName("cordon-linux")
-    # Lets the desktop match the window with packaging/cordon-linux.desktop, so the applications
-    # menu shows the right name and icon (critical on Wayland, where WM_CLASS is not enough).
-    app.setDesktopFileName("cordon-linux")
-    app.setApplicationDisplayName("CORDON-LINUX")
+    app.setApplicationName("cordonix")
+    app.setDesktopFileName("cordonix")
+    app.setApplicationDisplayName("CordonIX")
     app.setApplicationVersion(__version__)
-    app.setOrganizationName("CORDON-LINUX")
+    app.setOrganizationName("CordonIX")
 
     if args.portable:
         paths = AppPaths.in_directory(args.portable)
@@ -74,12 +72,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         paths.ensure_layout()
     except OSError as exc:
-        QMessageBox.critical(None, "CORDON-LINUX", f"Не удалось создать каталоги лаунчера:\n{exc}")
+        QMessageBox.critical(None, "CordonIX", f"Не удалось создать каталоги лаунчера:\n{exc}")
         return 1
 
     logger, _memory = launcherlog.setup_logging(paths)
     logger.info(
-        "CORDON-LINUX %s: запуск GUI (python %s), настройки: %s, данные: %s",
+        "CordonIX %s: запуск GUI (python %s), настройки: %s, данные: %s",
         __version__,
         sys.version.split()[0],
         paths.config_dir,
@@ -89,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = service.load()
     except CordonError as exc:
-        QMessageBox.critical(None, "CORDON-LINUX", str(exc))
+        QMessageBox.critical(None, "CordonIX", str(exc))
         return 1
     if args.theme:
         service.settings.theme = args.theme

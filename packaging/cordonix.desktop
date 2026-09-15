@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=CordonIX
+Name[ru]=CordonIX (лаунчер S.T.A.L.K.E.R.)
+GenericName=S.T.A.L.K.E.R. mod launcher
+GenericName[ru]=Лаунчер модов S.T.A.L.K.E.R.
+Comment=Manage profiles and mods for OpenXRay & Proton (S.T.A.L.K.E.R.) on UNIX/Linux
+Comment[ru]=Профили и моды S.T.A.L.K.E.R. для UNIX/Linux
+Exec=cordonix %u
+TryExec=cordonix
+Icon=cordonix
+Terminal=false
+Categories=Game;
+Keywords=stalker;openxray;proton;anomaly;mod;launcher;моды;
+Keywords[ru]=сталкер;моды;лаунчер;аномалия;протон;
+StartupNotify=true
+StartupWMClass=cordonix
+X-GNOME-Autostart-enabled=false

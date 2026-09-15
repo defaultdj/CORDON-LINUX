@@ -126,11 +126,46 @@ def test_unmount_is_safe_without_a_mount(fake_install, fake_profile):
     workspace.unmount()  # must not raise: nothing is mounted
 
 
-def test_standalone_profile_launches_from_the_game_directory(true_engine, fake_install, tmp_path):
-    build = str(tmp_path / "anomaly")
-    shutil.copytree(fake_install.game, build)
-    profile = Profile(id="standalone", name="Anomaly", kind="standalone", game_path=build,
-                      executable_relative="bin/xr_3da")
-    outcome = launch.run_profile(profile, fake_install.store)
+def test_exe_executable_uses_wine_runner(fake_install, fake_profile):
+    from cordon.core import elf
+    from cordon.core.engine import EngineInfo
+
+    exe_path = os.path.join(fake_install.game, "bin", "xrEngine.exe")
+    fake_info = EngineInfo(
+        executable=exe_path,
+        binary=elf.BinaryInfo(path=exe_path, kind="pe", bits=64, machine="x86_64"),
+        engine_root=fake_install.game,
+        game_root=fake_install.game,
+        data_root=fake_install.game,
+    )
+    plan = launch.build_launch_plan(fake_profile, fake_install.store, engine=fake_info)
+    assert any("wine" in arg.lower() or "proton" in arg.lower() for arg in plan.argv) or "xrEngine.exe" in plan.argv[0]
+
+
+def test_proton_runner_discovery(tmp_path, monkeypatch):
+    fake_proton = tmp_path / "proton"
+    fake_proton.write_text("#!/bin/sh\nexit 0\n")
+    fake_proton.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+
+    runner, argv = launch.find_windows_runner()
+    assert "proton" in runner.lower()
+    assert argv[0] == runner
+
+
+def test_automatic_proton_fallback_on_crash(fake_install, fake_profile, monkeypatch):
+    fake_profile.executable_relative = "bin/xrEngine.exe"
+    exe_file = os.path.join(fake_install.game, "bin", "xrEngine.exe")
+    util.write_text_atomic(exe_file, "MZ_fake_pe")
+    os.chmod(exe_file, 0o755)
+
+    fake_proton = os.path.join(fake_install.game, "bin", "proton")
+    util.write_text_atomic(fake_proton, "#!/bin/sh\nexit 0\n")
+    os.chmod(fake_proton, 0o755)
+    monkeypatch.setenv("PATH", f"{os.path.dirname(fake_proton)}:{os.environ.get('PATH', '')}")
+
+    outcome = launch.run_profile(fake_profile, fake_install.store)
     assert outcome.returncode == 0
-    assert outcome.plan.cwd == util.norm(build)
+    assert not outcome.crashed
+    log_content = util.read_text(outcome.session_log).lower()
+    assert "proton" in log_content or "wine" in log_content

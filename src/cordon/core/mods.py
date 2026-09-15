@@ -385,3 +385,41 @@ class ScanResult:
     @property
     def summary(self) -> str:
         return f"найдено модов: {len(self.found)}, пропущено: {len(self.skipped)}"
+
+
+@dataclass(slots=True)
+class ArchiveItem:
+    path: str
+    name: str
+    stem: str
+    size: int
+    size_display: str
+
+
+def scan_archives_detailed(root: str, *, recursive_depth: int = 3) -> list[ArchiveItem]:
+    """Recursively find all supported mod archives below *root* with detailed metadata."""
+    root = util.norm(root)
+    if not os.path.isdir(root):
+        return []
+    items: list[ArchiveItem] = []
+    for depth_root, dirnames, filenames in util.iter_tree(root):
+        depth = 0 if depth_root == root else os.path.relpath(depth_root, root).count(os.sep) + 1
+        if depth >= recursive_depth:
+            dirnames[:] = []
+        for name in filenames:
+            full_path = os.path.join(depth_root, name)
+            if is_archive(full_path):
+                try:
+                    size = os.path.getsize(full_path)
+                except OSError:
+                    size = 0
+                items.append(
+                    ArchiveItem(
+                        path=full_path,
+                        name=name,
+                        stem=archive_stem(full_path),
+                        size=size,
+                        size_display=util.human_size(size),
+                    )
+                )
+    return sorted(items, key=lambda x: x.name.lower())

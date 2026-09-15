@@ -32,7 +32,8 @@ from ..core.models import BACKEND_FUSE, ENGINE_FLAG_LABELS, Profile
 from ..core.service import CordonService
 from . import geometry as geometry_mod
 from . import theme as theme_mod
-from .dialogs import AboutDialog, LauncherSettingsDialog, Mo2Dialog, ProfileDialog, ReportDialog
+from .dialogs import AboutDialog, ArchiveScannerDialog, LauncherSettingsDialog, Mo2Dialog, ProfileDialog, ReportDialog
+from .screenshots import ScreenshotsPane
 from .widgets import ModTable, ProfileList, ReportPane, StatusStrip, make_button, make_menu_button, summary_line
 from .workers import SessionThread, Task
 
@@ -50,7 +51,13 @@ class MainWindow(QMainWindow):
         self._status = None
         self.actions_map: dict[str, QAction] = {}
 
-        self.setWindowTitle(f"CORDON-LINUX {__version__}")
+        self.setWindowTitle(f"CordonIX {__version__}")
+        icon_path = util.norm(os.path.join(os.path.dirname(__file__), "..", "..", "..", "packaging", "cordonix.svg"))
+        if not os.path.isfile(icon_path):
+            icon_path = util.norm(os.path.join(os.path.dirname(__file__), "..", "..", "..", "packaging", "cordon-linux.svg"))
+        if os.path.isfile(icon_path):
+            from PySide6.QtGui import QIcon
+            self.setWindowIcon(QIcon(icon_path))
         # Small screens (1024x768 is still common for S.T.A.L.K.E.R.) must not get a window
         # bigger than their display: everything derives from the available area.
         self._screen_rect = geometry_mod.available_rect()
@@ -122,8 +129,17 @@ class MainWindow(QMainWindow):
         header = QWidget()
         header.setObjectName("header")
         layout = QHBoxLayout(header)
-        layout.setContentsMargins(8, 6, 8, 6)
+        layout.setContentsMargins(10, 6, 10, 6)
         layout.setSpacing(6)
+
+        brand = QLabel("☢ CordonIX")
+        brand.setObjectName("brand")
+        brand.setToolTip("CordonIX — S.T.A.L.K.E.R. Profile & Mod Manager")
+        layout.addWidget(brand)
+
+        sep = QLabel("│")
+        sep.setObjectName("dim")
+        layout.addWidget(sep)
 
         def action(text: str, slot, shortcut: str = "", tip: str = "") -> QAction:
             item = QAction(text, self)
@@ -177,6 +193,7 @@ class MainWindow(QMainWindow):
         action("Удалить", self.delete_profile, "Ctrl+Delete", "Удалить профиль")
         action("Добавить моды", self.add_mods, "Ctrl+O", "Добавить папки модов")
         action("Найти моды", self.scan_mods, "Ctrl+F", "Найти моды в каталоге")
+        action("Поиск архивов", self.scan_archives_dialog, "", "Сканировать каталог на наличие архивов модов")
         action("Установить архив", self.install_archive, "Ctrl+I", "Установить мод из архива")
         action("Импорт MO2", self.import_mo2, "", "Импортировать порядок модов из Mod Organizer 2")
         action("Собрать", self.prepare_profile, "F5", "Собрать оверлей профиля")
@@ -216,6 +233,7 @@ class MainWindow(QMainWindow):
             [
                 self.actions_map["Добавить моды"],
                 self.actions_map["Найти моды"],
+                self.actions_map["Поиск архивов"],
                 self.actions_map["Установить архив"],
                 self.actions_map["Импорт MO2"],
             ],
@@ -240,16 +258,16 @@ class MainWindow(QMainWindow):
 
         layout.addStretch(1)
 
-        self.launch_button = make_button("Запустить", primary=True)
+        self.launch_button = make_button("▶  Запустить", primary=True)
         self.launch_button.setToolTip("Запустить игру с выбранным профилем (F9)")
         self.launch_button.clicked.connect(self.launch_profile)
-        self.launch_action = QAction("Запустить", self)
+        self.launch_action = QAction("▶  Запустить", self)
         self.launch_action.setShortcut(QKeySequence("F9"))
         self.launch_action.triggered.connect(self.launch_profile)
         self.addAction(self.launch_action)
         layout.addWidget(self.launch_button)
 
-        self.stop_button = make_button("Остановить")
+        self.stop_button = make_button("◼  Остановить")
         self.stop_button.setEnabled(False)
         self.stop_button.setToolTip("Завершить запущенную игру")
         self.stop_button.clicked.connect(self.stop_game)
@@ -296,6 +314,7 @@ class MainWindow(QMainWindow):
         self.mod_table.toggled.connect(self._mod_toggled)
         self.mod_table.order_changed.connect(self._mods_reordered)
         self.mod_table.selection_changed.connect(lambda _mod_id: self._sync_mod_buttons())
+        self.mod_table.files_dropped.connect(self.handle_files_dropped)
         mods_layout.addWidget(self.mod_table, 1)
 
         mod_buttons = QHBoxLayout()
@@ -333,11 +352,15 @@ class MainWindow(QMainWindow):
         self.mod_table.setToolTip(self.hint_label.toolTip())
         self.statusBar().addPermanentWidget(self.hint_label)
         mods_layout.addLayout(mod_buttons)
-        self.tabs.addTab(mods_tab, "Моды и приоритет")
+        self.tabs.addTab(mods_tab, "📁 Моды и приоритет")
 
         # --- reports tab
         self.report_pane = ReportPane()
-        self.tabs.addTab(self.report_pane, "Проверки и конфликты")
+        self.tabs.addTab(self.report_pane, "🩺 Проверки и конфликты")
+
+        # --- screenshots tab
+        self.screenshots_pane = ScreenshotsPane()
+        self.tabs.addTab(self.screenshots_pane, "🖼️ Скриншоты")
 
         # --- diagnostics tab
         diag_tab = QWidget()
@@ -345,6 +368,7 @@ class MainWindow(QMainWindow):
         diag_buttons = QHBoxLayout()
         diag_actions = (
             ("Игровой лог", self.open_game_log),
+            ("user.ltx", self.open_user_ltx),
             ("Дампы", self.open_dumps),
             ("Каталог профиля", lambda: self.open_path("root")),
             ("Данные профиля", lambda: self.open_path("appdata")),
@@ -369,7 +393,7 @@ class MainWindow(QMainWindow):
         self.diag_view.setReadOnly(True)
         self.diag_view.setLineWrapMode(QPlainTextEdit.NoWrap)
         diag_layout.addWidget(self.diag_view, 1)
-        self.tabs.addTab(diag_tab, "Диагностика")
+        self.tabs.addTab(diag_tab, "📄 Диагностика")
 
         # --- log tab
         log_tab = QWidget()
@@ -389,7 +413,7 @@ class MainWindow(QMainWindow):
         self.log_view.setLineWrapMode(QPlainTextEdit.NoWrap)
         self.log_view.setFont(theme_mod.monospace(11))
         log_layout.addWidget(self.log_view, 1)
-        self.tabs.addTab(log_tab, "Вывод игры")
+        self.tabs.addTab(log_tab, "📟 Вывод игры")
 
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 0)
@@ -445,6 +469,21 @@ class MainWindow(QMainWindow):
             profile_id = self.settings.profiles[0].id
         return self.settings.profile(profile_id) if profile_id else None
 
+    def _update_mod_table(self, profile: Profile | None = None) -> None:
+        if profile is None:
+            profile = self.current_profile()
+        if profile is None:
+            self.mod_table.set_mods(Profile(id="", name=""))
+            return
+        statuses = {}
+        try:
+            report = self.service.conflict_report(profile)
+            statuses = report.per_mod
+        except Exception:  # noqa: BLE001
+            statuses = {}
+        self.mod_table.set_mods(profile, statuses=statuses)
+        self.status_strip.detail.setText(summary_line(profile))
+
     def _profile_changed(self, *_args) -> None:
         profile = self.current_profile()
         if profile is None:
@@ -453,12 +492,25 @@ class MainWindow(QMainWindow):
         self.settings.selected_profile_id = profile.id
         self.service.save()
         self.launch_button.setEnabled(self._session_thread is None)
-        self.mod_table.set_mods(profile)
+        self._update_mod_table(profile)
         self.hint_label.setText(
             self._mod_hint(profile.is_standalone)
         )
         self.status_strip.headline.setText(profile.name)
         self.status_strip.detail.setText(summary_line(profile))
+        workspace = self.service.workspace_for(profile)
+        self.screenshots_pane.set_appdata(workspace.appdata)
+
+        # Automatically populate "Проверки и конфликты" tab with preflight readiness report
+        try:
+            plan = self.service.plan_for(profile)
+            report = preflight.run(profile, self.service.app, plan=plan, workspace=workspace)
+            lines = [(check.level, self._format_check(check)) for check in report.checks]
+            self.report_pane.set_lines([("plain", report.headline), ("plain", "")] + lines)
+            self._status = report
+        except Exception as exc:  # noqa: BLE001
+            self.report_pane.set_text(f"Ошибка проверки профиля: {exc}", "error")
+
         self._sync_mod_buttons()
         self._refresh_status_light()
 
@@ -522,9 +574,9 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ mods
     def _sync_mod_buttons(self) -> None:
-        has_selection = bool(self.mod_table.selected_mod_id())
+        has_selection = bool(self.mod_table.selected_mod_ids())
         for button in self.findChildren(type(self.stop_button)):
-            if button.text() in ("Вверх", "Вниз", "Убрать из профиля", "Удалить файлы"):
+            if button.text() in ("Вверх", "Вниз", "Убрать из профиля", "Удалить файлы", "Убрать выбранные", "Удалить выбранные"):
                 button.setEnabled(has_selection)
 
     def _mod_toggled(self, mod_id: str, enabled: bool) -> None:
@@ -536,6 +588,7 @@ class MainWindow(QMainWindow):
             return
         mod.enabled = enabled
         self.service.save()
+        self._update_mod_table(profile)
         self.status_strip.detail.setText(summary_line(profile))
         self._log(("Включён" if enabled else "Отключён") + f" мод «{mod.name}»")
 
@@ -545,6 +598,7 @@ class MainWindow(QMainWindow):
             return
         layers.reorder_mods(profile, order)
         self.service.save()
+        self._update_mod_table(profile)
         self._log("Порядок модов изменён: " + ", ".join(mod.name for mod in profile.mods[:5]) + "…")
         self._refresh_status_light()
 
@@ -562,7 +616,7 @@ class MainWindow(QMainWindow):
         mod = profile.mods.pop(index)
         profile.mods.insert(target, mod)
         self.service.save()
-        self.mod_table.set_mods(profile)
+        self._update_mod_table(profile)
         self.mod_table.selectRow(target)
         self._refresh_status_light()
 
@@ -573,7 +627,7 @@ class MainWindow(QMainWindow):
         for mod in profile.mods:
             mod.enabled = enabled
         self.service.save()
-        self.mod_table.set_mods(profile)
+        self._update_mod_table(profile)
         self.status_strip.detail.setText(summary_line(profile))
 
     def add_mods(self) -> None:
@@ -625,8 +679,16 @@ class MainWindow(QMainWindow):
         profile = self.current_profile()
         self.service.save()
         if profile is not None:
-            self.mod_table.set_mods(profile)
+            self._update_mod_table(profile)
             self.status_strip.detail.setText(summary_line(profile))
+            for mod in profile.mods:
+                if os.path.isdir(mod.path):
+                    indicators = xray.detect_standalone_mod_indicators(mod.path)
+                    if indicators:
+                        self._log(
+                            f"⚠ ВНИМАНИЕ: Мод «{mod.name}» содержит {', '.join(indicators)} — "
+                            "это похоже на готовую сборку! Рекомендуется использовать профиль «standalone»."
+                        )
         self._log(f"Добавлено модов: {added}")
 
     def install_archive(self) -> None:
@@ -647,44 +709,116 @@ class MainWindow(QMainWindow):
 
         def done(names):
             self.service.save()
-            self.mod_table.set_mods(profile)
+            self._update_mod_table(profile)
             self._log("Установлены моды: " + ", ".join(names))
             QMessageBox.information(self, "Готово", "Установлено модов: " + str(len(names)))
 
         self._run_task("Распаковка архивов…", work, done)
 
+    def scan_archives_dialog(self) -> None:
+        profile = self.current_profile()
+        if profile is None:
+            return
+        dialog = ArchiveScannerDialog(os.path.expanduser("~"), self)
+        if dialog.exec() == ArchiveScannerDialog.Accepted:
+            archives = dialog.selected_archives()
+            if not archives:
+                return
+
+            def work(progress):
+                installed = []
+                for archive in archives:
+                    outcome = self.service.install_archive(profile, archive, progress=progress)
+                    installed.append(outcome.mod.name)
+                return installed
+
+            def done(names):
+                self.service.save()
+                self._update_mod_table(profile)
+                self._log("Установлены моды из архивов: " + ", ".join(names))
+                QMessageBox.information(self, "Готово", "Установлено модов: " + str(len(names)))
+
+            self._run_task("Распаковка архивов…", work, done)
+
+    def handle_files_dropped(self, paths: list[str]) -> None:
+        profile = self.current_profile()
+        if profile is None or not paths:
+            return
+        archives = [p for p in paths if mods_mod.is_archive(p)]
+        folders = [p for p in paths if os.path.isdir(p)]
+
+        if not archives and not folders:
+            return
+
+        def work(progress):
+            installed_archives = []
+            for archive in archives:
+                outcome = self.service.install_archive(profile, archive, progress=progress)
+                installed_archives.append(outcome.mod.name)
+            added_folders = 0
+            if folders:
+                added_folders = self.service.add_mods_from_folders(profile, folders)
+            return installed_archives, added_folders
+
+        def done(result):
+            installed_names, added_count = result
+            self.service.save()
+            self._update_mod_table(profile)
+            msg_parts = []
+            if installed_names:
+                msg_parts.append(f"распаковано архивов: {len(installed_names)}")
+            if added_count:
+                msg_parts.append(f"добавлено папок: {added_count}")
+            summary = " · ".join(msg_parts) or "Готово"
+            self._log(f"Drag & Drop: {summary}")
+            self.statusBar().showMessage(f"Импорт завершён: {summary}")
+
+        self._run_task("Обработка перетащенных файлов…", work, done)
+
     def remove_mod(self) -> None:
         profile = self.current_profile()
-        mod_id = self.mod_table.selected_mod_id()
-        if profile is None or not mod_id:
+        mod_ids = self.mod_table.selected_mod_ids()
+        if profile is None or not mod_ids:
             return
-        mod = profile.mod_by_id(mod_id)
-        if mod is None:
-            return
-        self.service.remove_mod(profile, mod_id, delete_files=False)
-        self.mod_table.set_mods(profile)
-        self._log(f"Мод «{mod.name}» убран из профиля (файлы на диске сохранены)")
+        removed_names = []
+        for mod_id in mod_ids:
+            mod = profile.mod_by_id(mod_id)
+            if mod is not None:
+                removed_names.append(mod.name)
+                self.service.remove_mod(profile, mod_id, delete_files=False)
+        self.service.save()
+        self._update_mod_table(profile)
+        self.status_strip.detail.setText(summary_line(profile))
+        self._log(f"Моды убраны из профиля ({len(removed_names)}): " + ", ".join(removed_names))
 
     def delete_mod_files(self) -> None:
         profile = self.current_profile()
-        mod_id = self.mod_table.selected_mod_id()
-        if profile is None or not mod_id:
+        mod_ids = self.mod_table.selected_mod_ids()
+        if profile is None or not mod_ids:
             return
-        mod = profile.mod_by_id(mod_id)
-        if mod is None:
+        mods_to_delete = [m for m in [profile.mod_by_id(mid) for mid in mod_ids] if m is not None]
+        if not mods_to_delete:
             return
+        names_str = "\n".join(f"• {m.name}" for m in mods_to_delete[:10])
+        if len(mods_to_delete) > 10:
+            names_str += f"\n… и ещё {len(mods_to_delete) - 10} модов"
         answer = QMessageBox.question(
             self,
-            "Удаление мода",
-            f"Убрать «{mod.name}» и удалить его файлы?\n\n{mod.path}",
+            "Удаление модов",
+            f"Убрать и удалить с диска выбранные моды ({len(mods_to_delete)})?\n\n{names_str}",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No,
         )
         if answer != QMessageBox.Yes:
             return
-        self.service.remove_mod(profile, mod_id, delete_files=True)
-        self.mod_table.set_mods(profile)
-        self._log(f"Мод «{mod.name}» удалён")
+        deleted_names = []
+        for mod in mods_to_delete:
+            deleted_names.append(mod.name)
+            self.service.remove_mod(profile, mod.id, delete_files=True)
+        self.service.save()
+        self._update_mod_table(profile)
+        self.status_strip.detail.setText(summary_line(profile))
+        self._log(f"Моды удалены с диска ({len(deleted_names)}): " + ", ".join(deleted_names))
 
     def import_mo2(self) -> None:
         profile = self.current_profile()
@@ -708,7 +842,7 @@ class MainWindow(QMainWindow):
         else:
             count = apply_preview(profile, preview, use_overwrite=not no_overwrite)
         self.service.save()
-        self.mod_table.set_mods(profile)
+        self._update_mod_table(profile)
         self._log(f"Импорт MO2: применено записей — {count}")
 
     # ------------------------------------------------------------------ checks
@@ -980,6 +1114,16 @@ class MainWindow(QMainWindow):
             self._open_file(diag.log_path)
         else:
             self._info("Лог не найден", "Игровой лог ещё не создан — сначала запустите игру.")
+
+    def open_user_ltx(self) -> None:
+        profile = self.current_profile()
+        if profile is None:
+            return
+        user_ltx = os.path.join(self.service.workspace_for(profile).appdata, "user.ltx")
+        if os.path.isfile(user_ltx):
+            self._open_file(user_ltx)
+        else:
+            self._info("Файл не найден", f"Файл user.ltx ещё не создан:\n{user_ltx}")
 
     def open_dumps(self) -> None:
         profile = self.current_profile()

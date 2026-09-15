@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# CORDON-LINUX installer (user level, no root required).
+# CordonIX installer (user level, no root required).
 #
 #   ./install.sh              # install into ~/.local (recommended)
 #   ./install.sh --system     # install into /usr/local (needs sudo)
 #   ./install.sh --portable DIR   # also create the portable launcher next to the app data
 #
 # The script only touches:
-#   <prefix>/lib/cordon-linux        the application (a private venv)
-#   <prefix>/bin/cordon, cordon-gui  launcher entry points
+#   <prefix>/lib/cordonix        the application (a private venv)
+#   <prefix>/bin/cordon, cordon-gui, cordonix  launcher entry points
 #   <prefix>/share/applications      desktop entry
 #   <prefix>/share/icons/hicolor     icon
 set -euo pipefail
@@ -30,35 +30,28 @@ while [[ $# -gt 0 ]]; do
 done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APP_DIR="${PREFIX}/lib/cordon-linux"
+APP_DIR="${PREFIX}/lib/cordonix"
 VENV="${APP_DIR}/venv"
 
-# Guard against the most common mistake: running the script from a checkout of `main`, which
-# only carries the original Windows launcher (no pyproject.toml, no src/cordon).
 if [[ ! -f "${ROOT}/pyproject.toml" || ! -d "${ROOT}/src/cordon" ]]; then
-  # note the "|| true": with `set -o pipefail` a failing git call would abort the script
-  # before it can explain what went wrong
   BRANCH="$(git -C "${ROOT}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   if [[ -z "${BRANCH}" || "${BRANCH}" == "HEAD" ]]; then
     BRANCH="не определена"
   fi
   cat >&2 <<MSG
-Ошибка: это дерево не содержит Linux-порта CORDON.
+Ошибка: это дерево не содержит исходников CordonIX.
   каталог: ${ROOT}
   ветка:   ${BRANCH}
   ожидалось: pyproject.toml и src/cordon
 
-Похоже, рабочая копия устарела (порт влит в основную ветку). Обновите её:
+Обновите репозиторий:
 
-  git -C "${ROOT}" pull            # если ветка уже есть
-  # или склонируйте заново:
-  git clone https://github.com/defaultdj/CORDON-LINUX.git
-  cd CORDON-LINUX && ./install.sh
+  git -C "${ROOT}" pull
 MSG
   exit 1
 fi
 
-echo "==> CORDON-LINUX: установка в ${PREFIX}"
+echo "==> CordonIX: установка в ${PREFIX}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Ошибка: не найден ${PYTHON_BIN}. Установите Python 3.11 или новее." >&2
@@ -133,11 +126,11 @@ else
 fi
 
 echo "==> Точки входа"
-for tool in cordon; do
-  ${need_sudo} ln -sf "../lib/cordon-linux/venv/bin/${tool}" "${PREFIX}/bin/${tool}"
+for tool in cordon cordonix; do
+  ${need_sudo} ln -sf "../lib/cordonix/venv/bin/${tool}" "${PREFIX}/bin/${tool}"
 done
 if [[ ${GUI} -eq 1 ]]; then
-  ${need_sudo} ln -sf "../lib/cordon-linux/venv/bin/cordon-gui" "${PREFIX}/bin/cordon-gui"
+  ${need_sudo} ln -sf "../lib/cordonix/venv/bin/cordon-gui" "${PREFIX}/bin/cordon-gui"
 fi
 
 echo "==> Значок и пункт меню (раздел «Игры»)"
@@ -145,21 +138,25 @@ DESKTOP_DIR="${PREFIX}/share/applications"
 ICON_DIR="${PREFIX}/share/icons/hicolor/scalable/apps"
 ${need_sudo} mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
 
-${need_sudo} cp "${ROOT}/packaging/cordon-linux.svg" "${ICON_DIR}/cordon-linux.svg"
+if [[ -f "${ROOT}/packaging/cordonix.svg" ]]; then
+  ${need_sudo} cp "${ROOT}/packaging/cordonix.svg" "${ICON_DIR}/cordonix.svg"
+else
+  ${need_sudo} cp "${ROOT}/packaging/cordon-linux.svg" "${ICON_DIR}/cordonix.svg"
+fi
 
-# The desktop entry is what puts the launcher into the applications menu: the packages that
-# build the menu take «Игры» from Categories=Game, and the icon from Icon=<name> resolved
-# through the hicolor theme. Exec/TryExec must hold the absolute path of this installation.
+desktop_src="${ROOT}/packaging/cordonix.desktop"
+if [[ ! -f "${desktop_src}" ]]; then
+  desktop_src="${ROOT}/packaging/cordon-linux.desktop"
+fi
+
 desktop_tmp="$(mktemp)"
-sed "s|^Exec=.*|Exec=${PREFIX}/bin/cordon-gui %u|; s|^TryExec=.*|TryExec=${PREFIX}/bin/cordon-gui|" \
-  "${ROOT}/packaging/cordon-linux.desktop" > "${desktop_tmp}"
-# 'install', not a shell redirect: with --system the target lives in /usr/local, and a redirect
-# would either fail or leave the file owned by the current user.
-${need_sudo} install -m 644 "${desktop_tmp}" "${DESKTOP_DIR}/cordon-linux.desktop"
+sed "s|^Exec=.*|Exec=${PREFIX}/bin/cordonix %u|; s|^TryExec=.*|TryExec=${PREFIX}/bin/cordonix|" \
+  "${desktop_src}" > "${desktop_tmp}"
+${need_sudo} install -m 644 "${desktop_tmp}" "${DESKTOP_DIR}/cordonix.desktop"
 rm -f "${desktop_tmp}"
 
 if [[ ${GUI} -eq 0 ]]; then
-  echo "  [i] GUI не установлен: TryExec указывает на отсутствующий ${PREFIX}/bin/cordon-gui,"
+  echo "  [i] GUI не установлен: TryExec указывает на отсутствующий ${PREFIX}/bin/cordonix,"
   echo "      поэтому в меню пункт пока скрыт — он появится после установки PySide6."
 fi
 if [[ "${PREFIX}" != "${HOME}/.local" && "${PREFIX}" != "/usr" && "${PREFIX}" != "/usr/local" ]]; then
@@ -168,7 +165,7 @@ if [[ "${PREFIX}" != "${HOME}/.local" && "${PREFIX}" != "/usr" && "${PREFIX}" !=
 fi
 
 if command -v desktop-file-validate >/dev/null 2>&1; then
-  if desktop-file-validate "${DESKTOP_DIR}/cordon-linux.desktop"; then
+  if desktop-file-validate "${DESKTOP_DIR}/cordonix.desktop"; then
     echo "  [OK] пункт меню прошёл проверку (desktop-file-validate)"
   fi
 else
@@ -176,8 +173,6 @@ else
   echo "      Arch: sudo pacman -S desktop-file-utils"
 fi
 
-# The menu has to be told that the directory changed, otherwise the new item appears only after
-# a re-login. Every tool is optional: a missing one is only worth a note.
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "${DESKTOP_DIR}" >/dev/null 2>&1 || true
   echo "  [OK] база пунктов меню обновлена"
@@ -188,21 +183,20 @@ fi
 if command -v gtk-update-icon-cache >/dev/null 2>&1; then
   gtk-update-icon-cache -q -f -t "${PREFIX}/share/icons/hicolor" >/dev/null 2>&1 || true
 fi
-# KDE keeps its own cache; the command name differs between Plasma 5 and 6.
 for sycoca in kbuildsycoca6 kbuildsycoca5; do
   if command -v "${sycoca}" >/dev/null 2>&1; then
     "${sycoca}" >/dev/null 2>&1 || true
     break
   fi
 done
-echo "  Пункт меню: ${DESKTOP_DIR}/cordon-linux.desktop"
+echo "  Пункт меню: ${DESKTOP_DIR}/cordonix.desktop"
 
 echo
 echo "Готово."
 echo "  CLI : ${PREFIX}/bin/cordon --help"
 if [[ ${GUI} -eq 1 ]]; then
-  echo "  GUI : ${PREFIX}/bin/cordon-gui"
-  echo "        или значок CORDON-LINUX в меню приложений, раздел «Игры»"
+  echo "  GUI : ${PREFIX}/bin/cordonix"
+  echo "        или значок CordonIX в меню приложений, раздел «Игры»"
 else
   echo "  GUI : не установлен (нет PySide6). Поставьте вручную: ${VENV}/bin/pip install PySide6-Essentials"
 fi

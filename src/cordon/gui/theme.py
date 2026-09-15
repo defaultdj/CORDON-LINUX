@@ -29,32 +29,32 @@ class Palette:
 
 PDA = Palette(
     name="pda",
-    window="#171512",
-    base="#1f1c18",
-    alt_base="#262220",
-    text="#e8dcc8",
-    dim_text="#9c8f7a",
-    accent="#ffb000",
-    accent_text="#20180a",
-    border="#3a332b",
-    danger="#e2564b",
-    warning="#e0a63a",
-    ok="#7bb662",
+    window="#12110f",
+    base="#1a1815",
+    alt_base="#221e1a",
+    text="#ece1ce",
+    dim_text="#a09282",
+    accent="#ffab00",
+    accent_text="#181307",
+    border="#342d25",
+    danger="#ef5350",
+    warning="#ffca28",
+    ok="#66bb6a",
 )
 
 CLASSIC = Palette(
     name="classic",
-    window="#f2f3f5",
+    window="#f4f5f8",
     base="#ffffff",
-    alt_base="#f7f8fa",
-    text="#20232a",
-    dim_text="#6b7280",
-    accent="#2f6f9f",
+    alt_base="#eaedf1",
+    text="#1f2328",
+    dim_text="#656d76",
+    accent="#0969da",
     accent_text="#ffffff",
-    border="#c9ced6",
-    danger="#b42318",
-    warning="#a15c07",
-    ok="#1c7c3f",
+    border="#d0d7de",
+    danger="#cf222e",
+    warning="#d4a72c",
+    ok="#1a7f37",
 )
 
 
@@ -78,7 +78,6 @@ def qpalette(theme: Palette) -> QPalette:
     palette.setColor(QPalette.PlaceholderText, QColor(theme.dim_text))
     palette.setColor(QPalette.Disabled, QPalette.Text, QColor(theme.dim_text))
     palette.setColor(QPalette.Disabled, QPalette.ButtonText, QColor(theme.dim_text))
-    # Windows-style inactive selections look alien here; keep the accent when focus is lost.
     for group in (QPalette.Inactive, QPalette.Active):
         palette.setColor(group, QPalette.Highlight, QColor(theme.accent))
         palette.setColor(group, QPalette.HighlightedText, QColor(theme.accent_text))
@@ -88,21 +87,27 @@ def qpalette(theme: Palette) -> QPalette:
 
 def stylesheet(theme: Palette, *, compact: bool = False) -> str:
     """Full stylesheet; *compact* shrinks fonts and paddings for small screens (1024x768)."""
-    font_size = 12 if compact else 13
-    button_padding = "4px 7px" if compact else "5px 10px"
-    tab_padding = "5px 9px" if compact else "6px 14px"
-    item_padding = "3px 3px" if compact else "6px 4px"
-    header_padding = "4px" if compact else "5px"
+    font_size = 11 if compact else 12
+    button_padding = "4px 8px" if compact else "5px 12px"
+    tab_padding = "5px 10px" if compact else "6px 16px"
+    item_padding = "4px 6px" if compact else "6px 8px"
+    header_padding = "4px 6px" if compact else "6px 8px"
+
     return f"""
     QWidget {{
         background-color: {theme.window};
         color: {theme.text};
         font-size: {font_size}px;
+        font-family: 'Symbols Nerd Font', 'JetBrains Mono', 'JetBrainsMono Nerd Font', 'FiraCode Nerd Font', 'Hack Nerd Font', 'DejaVu Sans Mono', system-ui, sans-serif;
     }}
-    QMainWindow::separator {{ background: {theme.border}; width: 1px; height: 1px; }}
+    QMainWindow::separator {{
+        background: {theme.border};
+        width: 1px;
+        height: 1px;
+    }}
     QWidget#header {{
         background: {theme.alt_base};
-        border-bottom: 1px solid {theme.border};
+        border-bottom: 2px solid {theme.accent};
     }}
     QToolBar {{
         background: {theme.alt_base};
@@ -110,82 +115,263 @@ def stylesheet(theme: Palette, *, compact: bool = False) -> str:
         spacing: 6px;
         padding: 4px 6px;
     }}
-    QToolButton#menuButton::menu-indicator {{ image: none; }}
-    QToolButton, QPushButton {{
-        background: {theme.base};
-        border: 1px solid {theme.border};
-        border-radius: 3px;
-        padding: {button_padding};
+    QToolButton#menuButton::menu-indicator {{
+        image: none;
     }}
-    QToolButton:hover, QPushButton:hover {{ border-color: {theme.accent}; color: {theme.accent}; }}
-    QToolButton:disabled, QPushButton:disabled {{ color: {theme.dim_text}; border-color: {theme.border}; }}
+    QToolButton, QPushButton {{
+        background-color: {theme.base};
+        color: {theme.text};
+        border: 1px solid {theme.border};
+        border-radius: 4px;
+        padding: {button_padding};
+        font-weight: 500;
+    }}
+    QToolButton:hover, QPushButton:hover {{
+        background-color: {theme.alt_base};
+        border-color: {theme.accent};
+        color: {theme.accent};
+    }}
+    QToolButton:pressed, QPushButton:pressed {{
+        background-color: {theme.window};
+    }}
+    QToolButton:disabled, QPushButton:disabled {{
+        background-color: {theme.window};
+        color: {theme.dim_text};
+        border-color: {theme.border};
+    }}
     QPushButton#primary {{
-        background: {theme.accent};
+        background-color: {theme.accent};
         color: {theme.accent_text};
         border: 1px solid {theme.accent};
+        border-radius: 4px;
         font-weight: bold;
-        padding: 7px 18px;
+        padding: 6px 18px;
     }}
-    QPushButton#primary:hover {{ background: {theme.text}; }}
-    QPushButton#primary:disabled {{ background: {theme.border}; color: {theme.dim_text}; }}
-    QListWidget, QTableWidget, QPlainTextEdit, QTextEdit, QLineEdit, QComboBox, QSpinBox {{
-        background: {theme.base};
-        border: 1px solid {theme.border};
-        border-radius: 3px;
-        selection-background-color: {theme.accent};
-        selection-color: {theme.accent_text};
+    QPushButton#primary:hover {{
+        background-color: {theme.text};
+        color: {theme.window};
+        border-color: {theme.text};
     }}
-    QListWidget::item {{ padding: {item_padding}; }}
-    QListWidget::item:selected, QListWidget::item:selected:!active,
-    QTableWidget::item:selected, QTableWidget::item:selected:!active,
-    QTableView::item:selected, QTableView::item:selected:!active {{
-        background: {theme.accent};
-        color: {theme.accent_text};
-    }}
-    QTableView {{ alternate-background-color: {theme.alt_base}; selection-background-color: {theme.accent}; }}
-    QTableView::item {{ padding: 2px; }}
-    QTableCornerButton::section {{ background: {theme.alt_base}; border: 0; }}
-    QHeaderView::section {{
-        background: {theme.alt_base};
+    QPushButton#primary:disabled {{
+        background-color: {theme.border};
         color: {theme.dim_text};
+        border-color: {theme.border};
+    }}
+
+    QListWidget, QTableWidget, QPlainTextEdit, QTextEdit, QLineEdit, QComboBox, QSpinBox {{
+        background-color: {theme.base};
+        color: {theme.text};
+        border: 1px solid {theme.border};
+        border-radius: 4px;
+        selection-background-color: #382c16;
+        selection-color: {theme.text};
+    }}
+    QLineEdit:focus, QComboBox:focus, QTableWidget:focus {{
+        border-color: {theme.accent};
+    }}
+
+    QListWidget::item {{
+        border-radius: 4px;
+        margin: 2px 3px;
+        padding: {item_padding};
+    }}
+    QListWidget::item:hover {{
+        background-color: {theme.alt_base};
+    }}
+    QListWidget::item:selected, QListWidget::item:selected:!active {{
+        background-color: #382c16;
+        color: {theme.accent};
+        border: 1px solid {theme.accent};
+    }}
+
+    QTableView {{
+        gridline-color: {theme.border};
+        alternate-background-color: {theme.alt_base};
+        border: 1px solid {theme.border};
+        border-radius: 4px;
+        selection-background-color: #382c16;
+        selection-color: {theme.text};
+    }}
+    QTableView::item {{
+        padding: 4px 6px;
+    }}
+    QTableView::item:selected, QTableView::item:selected:!active {{
+        background-color: #382c16;
+        color: {theme.text};
+    }}
+    QTableCornerButton::section {{
+        background: {theme.alt_base};
         border: 0;
+    }}
+    QHeaderView::section {{
+        background-color: {theme.alt_base};
+        color: {theme.accent};
+        border: none;
         border-bottom: 1px solid {theme.border};
+        border-right: 1px solid {theme.border};
         padding: {header_padding};
         font-weight: bold;
     }}
-    QTabWidget::pane {{ border: 1px solid {theme.border}; top: -1px; }}
-    QTabBar::tab {{
-        background: {theme.window};
+
+    QTabWidget::pane {{
         border: 1px solid {theme.border};
+        border-radius: 4px;
+        top: -1px;
+    }}
+    QTabBar::tab {{
+        background-color: {theme.window};
+        border: 1px solid {theme.border};
+        border-bottom: none;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
         padding: {tab_padding};
         color: {theme.dim_text};
+        margin-right: 2px;
     }}
-    QTabBar::tab:selected {{ background: {theme.base}; color: {theme.accent}; border-bottom-color: {theme.base}; }}
+    QTabBar::tab:hover {{
+        color: {theme.text};
+        background-color: {theme.alt_base};
+    }}
+    QTabBar::tab:selected {{
+        background-color: {theme.base};
+        color: {theme.accent};
+        border-bottom: 2px solid {theme.accent};
+        font-weight: bold;
+    }}
+
     QGroupBox {{
         border: 1px solid {theme.border};
         border-radius: 4px;
         margin-top: 12px;
         padding-top: 10px;
     }}
-    QGroupBox::title {{ subcontrol-origin: margin; left: 10px; color: {theme.accent}; }}
-    QStatusBar {{ background: {theme.alt_base}; border-top: 1px solid {theme.border}; color: {theme.dim_text}; }}
-    QSplitter::handle {{ background: {theme.border}; }}
-    QScrollBar:vertical, QScrollBar:horizontal {{ background: {theme.window}; border: 0; }}
-    QScrollBar::handle {{ background: {theme.border}; border-radius: 3px; min-height: 24px; min-width: 24px; }}
-    QScrollBar::handle:hover {{ background: {theme.accent}; }}
-    QLabel#headline {{ color: {theme.accent}; font-weight: bold; }}
-    QLabel#dim {{ color: {theme.dim_text}; }}
-    QLabel#error {{ color: {theme.danger}; }}
-    QLabel#warning {{ color: {theme.warning}; }}
-    QLabel#ok {{ color: {theme.ok}; }}
-    QCheckBox::indicator, QRadioButton::indicator {{ width: 14px; height: 14px; }}
-    QToolTip {{ background: {theme.base}; color: {theme.text}; border: 1px solid {theme.accent}; }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        left: 10px;
+        color: {theme.accent};
+        font-weight: bold;
+    }}
+
+    QStatusBar {{
+        background: {theme.alt_base};
+        border-top: 1px solid {theme.border};
+        color: {theme.dim_text};
+    }}
+    QSplitter::handle {{
+        background: {theme.border};
+    }}
+
+    QScrollBar:vertical {{
+        background: {theme.window};
+        width: 8px;
+        margin: 0px;
+        border-radius: 4px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {theme.border};
+        min-height: 20px;
+        border-radius: 4px;
+    }}
+    QScrollBar::handle:vertical:hover {{
+        background: {theme.accent};
+    }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+    QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
+        height: 0px;
+        background: none;
+    }}
+
+    QScrollBar:horizontal {{
+        background: {theme.window};
+        height: 8px;
+        margin: 0px;
+        border-radius: 4px;
+    }}
+    QScrollBar::handle:horizontal {{
+        background: {theme.border};
+        min-width: 20px;
+        border-radius: 4px;
+    }}
+    QScrollBar::handle:horizontal:hover {{
+        background: {theme.accent};
+    }}
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal,
+    QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+        width: 0px;
+        background: none;
+    }}
+
+    QLabel#headline {{
+        color: {theme.accent};
+        font-weight: bold;
+        font-size: {font_size + 2}px;
+    }}
+    QLabel#brand {{
+        color: {theme.accent};
+        font-weight: bold;
+        font-size: {font_size + 3}px;
+        letter-spacing: 1px;
+    }}
+    QLabel#dim {{
+        color: {theme.dim_text};
+    }}
+    QLabel#error {{
+        color: {theme.danger};
+    }}
+    QLabel#warning {{
+        color: {theme.warning};
+    }}
+    QLabel#ok {{
+        color: {theme.ok};
+    }}
+
+    QCheckBox::indicator, QRadioButton::indicator {{
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid {theme.border};
+        background: {theme.base};
+    }}
+    QCheckBox::indicator:checked {{
+        background: {theme.accent};
+        border-color: {theme.accent};
+    }}
+
+    QMenu {{
+        background-color: {theme.base};
+        border: 1px solid {theme.border};
+        border-radius: 4px;
+        padding: 4px;
+    }}
+    QMenu::item {{
+        padding: 5px 20px 5px 10px;
+        border-radius: 3px;
+    }}
+    QMenu::item:selected {{
+        background-color: {theme.accent};
+        color: {theme.accent_text};
+    }}
+    QToolTip {{
+        background-color: {theme.base};
+        color: {theme.text};
+        border: 1px solid {theme.accent};
+        border-radius: 4px;
+        padding: 4px 8px;
+    }}
     """
 
 
 def monospace(pixels: int = 12, *, bold: bool = False) -> QFont:
     font = QFont("monospace")
     font.setStyleHint(QFont.Monospace)
+    font.setFamilies([
+        "Symbols Nerd Font",
+        "JetBrainsMono Nerd Font",
+        "FiraCode Nerd Font",
+        "Hack Nerd Font",
+        "DejaVu Sans Mono",
+        "monospace",
+    ])
     font.setPixelSize(pixels)
     font.setBold(bold)
     return font

@@ -52,6 +52,39 @@ class LaunchOutcome:
         return bool(self.returncode not in (0, None))
 
 
+def find_windows_runner() -> tuple[str, list[str]]:
+    """Locate Proton or Wine runner for Windows executables (.exe).
+
+    Prefers Proton (system proton binary, proton-ge, or Steam Proton installs) over stock Wine.
+    """
+    for cmd in ("proton", "proton-ge", "proton-ge-custom"):
+        path = shutil.which(cmd)
+        if path:
+            return path, [path, "run"] if cmd == "proton" else [path]
+
+    home = os.path.expanduser("~")
+    steam_dirs = [
+        os.path.join(home, ".steam", "root", "steamapps", "common"),
+        os.path.join(home, ".local", "share", "Steam", "steamapps", "common"),
+        os.path.join(home, ".var", "app", "com.valvesoftware.Steam", "data", "Steam", "steamapps", "common"),
+        "/usr/share/steam/compatibilitytools.d",
+    ]
+    for base in steam_dirs:
+        if not os.path.isdir(base):
+            continue
+        try:
+            for name in util.entry_names(base):
+                if "proton" in name.lower():
+                    candidate = os.path.join(base, name, "proton")
+                    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                        return candidate, [candidate, "run"]
+        except OSError:  # pragma: no cover
+            pass
+
+    wine = shutil.which("wine64") or shutil.which("wine") or "wine"
+    return wine, [wine]
+
+
 def build_launch_plan(
     profile: Profile,
     app: AppPaths,
@@ -66,7 +99,13 @@ def build_launch_plan(
     root = space.root
     notes: list[str] = []
 
-    argv: list[str] = [info.executable]
+    argv: list[str] = []
+    if info.executable.lower().endswith(".exe"):
+        runner_bin, runner_argv = find_windows_runner()
+        argv = list(runner_argv) + [info.executable]
+        notes.append(f"запуск Windows-бинарника через {os.path.basename(runner_bin)}")
+    else:
+        argv = [info.executable]
     if profile.is_standalone:
         cwd = util.norm(profile.game_path) or info.engine_root
         if profile.isolate_appdata and os.path.isfile(space.fsgame_path):
@@ -328,16 +367,67 @@ def run_profile(
             profile, app, force_rebuild=force_rebuild, progress=progress, logger=logger
         )
         return launch_plan
+
+    target_engine = engine_mod.find_engine(profile)
+    native_engine = (
+        engine_mod.find_native_fallback_engine(profile)
+        if getattr(profile, "prefer_native_openxray", True)
+        else None
+    )
+
+    fallback_engine = None
+    if (
+        native_engine
+        and target_engine
+        and target_engine.executable.lower().endswith(".exe")
+        and getattr(profile, "auto_proton_fallback", True)
+    ):
+        active_engine = native_engine
+        fallback_engine = target_engine
+    else:
+        active_engine = target_engine
+        if target_engine and not target_engine.executable.lower().endswith(".exe") and getattr(profile, "auto_proton_fallback", True):
+            fallback_engine = engine_mod.find_windows_fallback_engine(profile)
+
+    if active_engine and active_engine != target_engine and logger:
+        logger.info("🚀 [Нативный запуск] Попытка запуска через системный OpenXRay (%s)...", active_engine.executable)
+
     session = start_session(
         profile,
         app,
         force_rebuild=force_rebuild,
         progress=progress,
         logger=logger,
+        engine=active_engine,
     )
     if line_callback:
         session.add_line_callback(line_callback)
-    return finish_session(session, app, logger=logger)
+    outcome = finish_session(session, app, logger=logger)
+
+    if outcome.crashed and fallback_engine is not None and getattr(profile, "auto_proton_fallback", True):
+        if logger:
+            logger.warning(
+                "⚠️ Нативный OpenXRay завершился с ошибкой (код %s). Запуск .exe через Proton/Wine (%s)...",
+                outcome.returncode,
+                fallback_engine.executable,
+            )
+        if line_callback:
+            line_callback(
+                f"⚠️ Нативный OpenXRay завершился с ошибкой (код {outcome.returncode}). "
+                f"Переключение на запуск .exe через Proton/Wine ({fallback_engine.executable})..."
+            )
+        session = start_session(
+            profile,
+            app,
+            force_rebuild=False,
+            logger=logger,
+            engine=fallback_engine,
+        )
+        if line_callback:
+            line_callback(session.plan.command_line)
+        return finish_session(session, app, logger=logger)
+
+    return outcome
 
 
 def engine_for(profile: Profile) -> engine_mod.EngineInfo | None:

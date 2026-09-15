@@ -13,6 +13,25 @@ from cordon.core.errors import CordonError
 
 
 # ---------------------------------------------------------------------------- scanning
+def test_detect_standalone_mod_indicators(tmp_path):
+    from cordon.core import xray
+
+    mod_dir = tmp_path / "normal_mod"
+    mod_dir.mkdir()
+    (mod_dir / "gamedata").mkdir()
+    assert xray.detect_standalone_mod_indicators(str(mod_dir)) == []
+
+    build_dir = tmp_path / "build_mod"
+    build_dir.mkdir()
+    (build_dir / "fsgame.ltx").write_text("; fs")
+    (build_dir / "bin_x64").mkdir()
+    (build_dir / "levels").mkdir()
+    indicators = xray.detect_standalone_mod_indicators(str(build_dir))
+    assert "fsgame.ltx" in indicators
+    assert "bin/" in indicators
+    assert "levels/" in indicators
+
+
 def test_scan_finds_mod_folders_and_archives(tmp_path):
     root = tmp_path / "downloads"
     (root / "Mod One").mkdir(parents=True)
@@ -25,6 +44,12 @@ def test_scan_finds_mod_folders_and_archives(tmp_path):
     assert "Mod One" in names
     assert "mod.zip" in names
     assert "plain folder" not in names
+
+    items = mods.scan_archives_detailed(str(root))
+    assert len(items) == 1
+    assert items[0].name == "mod.zip"
+    assert items[0].stem == "mod"
+    assert items[0].size > 0
 
 
 def test_scan_entries_classifies_layout(fake_install):
@@ -191,3 +216,26 @@ def test_conflicts_respect_excluded_paths(fake_install, fake_profile):
     # the file is excluded from the overlay, so the mod that shipped it contributes nothing
     assert report.status_of("m1").provided == 0
     assert all(not relative.endswith("configs/system.ltx") for relative, _providers, _winner in report.files)
+
+
+def test_duplicate_mods_conflict_statuses(fake_install, fake_profile):
+    from cordon.core.models import ModEntry
+
+    dup1 = os.path.join(fake_install.root, "mods", "dup1")
+    util.ensure_dir(os.path.join(dup1, "gamedata", "scripts"))
+    util.write_text_atomic(os.path.join(dup1, "gamedata", "scripts", "main.script"), "-- main 1")
+
+    dup2 = os.path.join(fake_install.root, "mods", "dup2")
+    util.ensure_dir(os.path.join(dup2, "gamedata", "scripts"))
+    util.write_text_atomic(os.path.join(dup2, "gamedata", "scripts", "main.script"), "-- main 2")
+
+    fake_profile.mods = [
+        ModEntry(id="d1", name="Дубликат", path=dup1),
+        ModEntry(id="d2", name="Дубликат", path=dup2),
+    ]
+    plan = layers.build_plan(fake_profile, engine_data_path=fake_install.engine_data)
+    plan.index()
+    report = conflicts.analyze(plan)
+
+    assert report.per_mod["d1"].status == conflicts.STATUS_REDUNDANT
+    assert report.per_mod["d2"].status == conflicts.STATUS_OVERWRITES

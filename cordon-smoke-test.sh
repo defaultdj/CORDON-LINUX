@@ -65,7 +65,10 @@ if command -v cordon-gui >/dev/null 2>&1; then
 else
   warn "cordon-gui нет в PATH (CLI всё равно работает)"
 fi
-VENV_PY="${HOME}/.local/lib/cordon-linux/venv/bin/python"
+VENV_PY="${HOME}/.local/lib/cordonix/venv/bin/python"
+if [[ ! -x "${VENV_PY}" ]]; then
+  VENV_PY="${HOME}/.local/lib/cordon-linux/venv/bin/python"
+fi
 if [[ -x "${VENV_PY}" ]]; then
   if "${VENV_PY}" -c 'import PySide6, PySide6.QtWidgets' >/dev/null 2>&1; then
     ok "PySide6 импортируется в venv лаунчера: $("${VENV_PY}" -c 'import PySide6;print(PySide6.__version__)')"

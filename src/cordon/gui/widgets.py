@@ -21,7 +21,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ..core.conflicts import STATUS_REDUNDANT
+from ..core.conflicts import (
+    STATUS_CONFLICT_FREE,
+    STATUS_MIXED,
+    STATUS_OVERWRITES,
+    STATUS_OVERWRITTEN,
+    STATUS_REDUNDANT,
+)
 from ..core.models import BACKEND_FUSE, BACKEND_LINK, Profile
 from .theme import monospace
 
@@ -29,7 +35,7 @@ MOD_ID_ROLE = Qt.UserRole + 1
 
 
 class ProfileList(QListWidget):
-    """Profiles with a compact summary line; double click launches."""
+    """Profiles list with card-style summary lines."""
 
     profile_activated = Signal(str)
 
@@ -51,13 +57,14 @@ class ProfileList(QListWidget):
             )
             badge = "●" if not profile.is_standalone else "◆"
             item = QListWidgetItem(
-                f"{badge} {profile.name}\n"
-                f"    {kind} · модов {len(profile.enabled_mods)}/{len(profile.mods)} · "
-                f"{backend} · {profile.playtime_display}"
+                f"{badge}  {profile.name}\n"
+                f"     {kind} · моды {len(profile.enabled_mods)}/{len(profile.mods)} · "
+                f"{backend} · ⏱ {profile.playtime_display}"
             )
             item.setData(MOD_ID_ROLE, profile.id)
             item.setToolTip(
                 f"{profile.game_path or 'каталог игры не задан'}\n"
+                f"время в игре: {profile.playtime_display}\n"
                 f"последний запуск: {profile.last_played_display}"
             )
             self.addItem(item)
@@ -76,13 +83,23 @@ class ModTable(QTableWidget):
     """Priority table: the checkbox enables a mod, the row order is the priority order.
 
     A mod *lower* in the table wins file conflicts, exactly like in the Windows launcher.
+    Supports Drag & Drop file imports from external file managers.
     """
 
     order_changed = Signal(list)
     toggled = Signal(str, bool)
     selection_changed = Signal(str)
+    files_dropped = Signal(list)
 
     HEADERS = ("Вкл", "№", "Мод", "Статус", "Путь")
+
+    STATUS_COLORS = {
+        STATUS_REDUNDANT: "#ffca28",
+        STATUS_OVERWRITES: "#66bb6a",
+        STATUS_OVERWRITTEN: "#ef5350",
+        STATUS_MIXED: "#ffab00",
+        STATUS_CONFLICT_FREE: "#a09282",
+    }
 
     def __init__(self, parent=None) -> None:
         super().__init__(0, len(self.HEADERS), parent)
@@ -126,27 +143,36 @@ class ModTable(QTableWidget):
             missing = not os.path.isdir(mod.path)
             name = QTableWidgetItem(("⚠ " if missing else "") + mod.name)
             if missing:
-                name.setForeground(QColor("#e2564b"))
+                name.setForeground(QColor("#ef5350"))
             name.setToolTip(mod.path)
             name.setData(MOD_ID_ROLE, mod.id)
             self.setItem(row, 2, name)
 
-            status = statuses.get(mod.id) or statuses.get(mod.name)
-            label = status.label if status else "—"
+            status = statuses.get(mod.id)
+            if status is None and mod.name in statuses:
+                status = statuses.get(mod.name)
+
+            if status:
+                color_hex = self.STATUS_COLORS.get(status.status, "#a09282")
+                label = f"☢  {status.label}"
+            else:
+                color_hex = "#a09282"
+                label = "☢  Отключён" if not mod.enabled else "☢  Без конфликтов"
+
             status_item = QTableWidgetItem(label)
-            if status and status.status == STATUS_REDUNDANT:
-                status_item.setForeground(QColor("#e0a63a"))
+            status_item.setForeground(QColor(color_hex))
+
             status_item.setToolTip(
                 f"файлов: {status.provided}, побеждает: {status.winning}, перекрыто: {status.losing}"
                 if status
-                else "нет данных"
+                else ("мод отключён" if not mod.enabled else "нет данных")
             )
             status_item.setData(MOD_ID_ROLE, mod.id)
             self.setItem(row, 3, status_item)
 
             path = QTableWidgetItem(mod.path)
             path.setData(MOD_ID_ROLE, mod.id)
-            path.setForeground(QColor("#9c8f7a"))
+            path.setForeground(QColor("#a09282"))
             self.setItem(row, 4, path)
         self.blockSignals(False)
         self.clearSelection()
@@ -164,7 +190,33 @@ class ModTable(QTableWidget):
         items = self.selectedItems()
         return str(items[0].data(MOD_ID_ROLE)) if items else ""
 
+    def selected_mod_ids(self) -> list[str]:
+        mod_ids: list[str] = []
+        for item in self.selectedItems():
+            mod_id = str(item.data(MOD_ID_ROLE))
+            if mod_id and mod_id not in mod_ids:
+                mod_ids.append(mod_id)
+        return mod_ids
+
+    def dragEnterEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
     def dropEvent(self, event) -> None:  # noqa: N802 - Qt API
+        if event.mimeData().hasUrls():
+            paths = [url.toLocalFile() for url in event.mimeData().urls() if url.toLocalFile()]
+            if paths:
+                self.files_dropped.emit(paths)
+                event.acceptProposedAction()
+                return
         super().dropEvent(event)
         self.order_changed.emit(self.mod_ids_in_order())
         self._renumber()
@@ -189,11 +241,11 @@ class ReportPane(QWidget):
     """Coloured report view (pre-flight checks, conflict summary, diagnostics)."""
 
     COLORS = {
-        "error": "#e2564b",
-        "warning": "#e0a63a",
-        "ok": "#7bb662",
-        "info": "#9c8f7a",
-        "plain": "#e8dcc8",
+        "error": "#ef5350",
+        "warning": "#ffca28",
+        "ok": "#66bb6a",
+        "info": "#a09282",
+        "plain": "#ece1ce",
     }
 
     def __init__(self, parent=None) -> None:
@@ -237,16 +289,20 @@ class ReportPane(QWidget):
 
 
 class StatusStrip(QWidget):
-    """Small header strip with the profile headline and quick action buttons."""
+    """Small header strip with the profile headline and quick status detail."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.setSpacing(8)
+
         self.headline = QLabel("Профиль не выбран")
         self.headline.setObjectName("headline")
+
         self.detail = QLabel("—")
         self.detail.setObjectName("dim")
+
         layout.addWidget(self.headline)
         layout.addStretch(1)
         layout.addWidget(self.detail)
@@ -259,7 +315,7 @@ def make_button(text: str, *, primary: bool = False) -> QPushButton:
         font = QFont(button.font())
         font.setBold(True)
         button.setFont(font)
-        button.setMinimumHeight(34)
+        button.setMinimumHeight(32)
     return button
 
 
@@ -274,6 +330,7 @@ def summary_line(profile: Profile, status=None) -> str:
         parts.append("backend: fuse-overlayfs")
     else:
         parts.append(f"backend: {profile.backend}")
+    parts.append(f"время: {profile.playtime_display}")
     return " · ".join(parts)
 
 
@@ -289,11 +346,7 @@ __all__ = [
 
 
 def make_menu_button(text: str, entries, *, tooltip: str = "", object_name: str = "menuButton"):
-    """A ``QToolButton`` with a dropdown menu.
-
-    Small screens cannot afford a row of six buttons, so groups of rarely used actions collapse
-    into one menu button instead of being dropped.
-    """
+    """A ``QToolButton`` with a dropdown menu."""
     from PySide6.QtWidgets import QMenu, QToolButton
 
     button = QToolButton()
