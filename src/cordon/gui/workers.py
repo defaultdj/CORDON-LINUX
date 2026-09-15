@@ -82,6 +82,7 @@ class SessionThread(QThread):
             self.msleep(200)
 
         outcome = finish_session(self._session, self._app, logger=self._service.logger)
+        self._report_problems(outcome)
 
         if not outcome.crashed or self._stop_requested:
             fallback_engine = None
@@ -104,11 +105,21 @@ class SessionThread(QThread):
                 while self._session.running() and not self._stop_requested:
                     self.msleep(200)
                 outcome = finish_session(self._session, self._app, logger=self._service.logger)
+                self._report_problems(outcome)
             except Exception as exc:  # noqa: BLE001
                 self.failed.emit(str(exc))
                 return
 
         self.finished.emit(int(outcome.returncode or 0), outcome.duration)
+
+    def _report_problems(self, outcome) -> None:
+        diag = outcome.diagnostics
+        if diag is None or self._stop_requested:
+            return
+        for item in diag.problems:
+            self.line.emit(f"❌ {item}")
+        for item in diag.hints:
+            self.line.emit(f"💡 {item}")
 
     def stop(self) -> None:
         self._stop_requested = True

@@ -358,6 +358,33 @@ def start_session(
     return spawn(launch_plan, workspace, profile, logger=logger)
 
 
+def session_hints(profile: Profile, plan: LaunchPlan, outcome: LaunchOutcome) -> list[str]:
+    """Explain the most common crash signatures in terms of what the user can do about it."""
+    diag = outcome.diagnostics
+    if diag is None or not outcome.crashed:
+        return []
+    hints: list[str] = []
+    native_engine = not plan.executable.lower().endswith(".exe")
+    lua_problem = any(diagnostics.is_lua_problem(item) for item in diag.problems)
+    if profile.is_standalone and native_engine and lua_problem:
+        hints.append(
+            "Сборка упала в Lua-скрипте на системном OpenXRay: скорее всего, она рассчитана на свой "
+            "движок (патченный xrGame.dll в bin/). Запустите её через Proton/Wine (Ctrl+F9 или "
+            "`cordon launch --runner proton`)."
+        )
+    elif native_engine and lua_problem and profile.mods:
+        hints.append(
+            "Ошибка в Lua-скрипте: обычно это несовместимый мод или неправильный порядок модов. "
+            "Отключайте моды по одному, начиная с последнего включённого."
+        )
+    if any("шейдеры рендера не найдены" in item for item in diag.problems):
+        hints.append(
+            "Движок не нашёл шейдеры своего рендера: проверьте, что каталог данных движка "
+            "(gamedata/shaders) доступен, или выберите другой рендер (-r2 / -r4)."
+        )
+    return hints
+
+
 def finish_session(
     session: Session,
     app: AppPaths,
@@ -381,6 +408,7 @@ def finish_session(
     )
     try:
         outcome.diagnostics = diagnostics.collect(session.workspace.appdata, since=started)
+        outcome.diagnostics.hints = session_hints(session.profile, session.plan, outcome)
     except Exception as exc:  # noqa: BLE001 - diagnostics are best effort
         if logger:
             logger.warning("не удалось собрать диагностику: %s", exc)
