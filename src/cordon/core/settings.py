@@ -107,7 +107,7 @@ class SettingsStore:
         except OSError as exc:
             raise ConfigError(
                 f"Не удалось прочитать файл настроек {primary}: {exc}. "
-                "CORDON-LINUX не изменял его; закройте программу, которая держит файл, и повторите."
+                "CordonIX не изменял его; закройте программу, которая держит файл, и повторите."
             ) from exc
 
         settings = LauncherSettings.from_dict(payload)

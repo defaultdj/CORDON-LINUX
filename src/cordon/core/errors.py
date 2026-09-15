@@ -1,4 +1,4 @@
-"""Exception hierarchy used across CORDON-LINUX.
+"""Exception hierarchy used across CordonIX.
 
 Every failure that a user can act upon is raised as a :class:`CordonError` subclass with a
 message that is safe to show in the CLI and the GUI.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 
 class CordonError(Exception):
-    """Base class for all expected CORDON-LINUX failures."""
+    """Base class for all expected CordonIX failures."""
 
 
 class ConfigError(CordonError):

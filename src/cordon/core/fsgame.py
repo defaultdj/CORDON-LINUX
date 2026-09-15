@@ -3,7 +3,7 @@
 The engine parses this file as ``alias = recursive|notify|<root>|<add>|<def>|<caption>`` where
 ``<root>`` is either another alias (``$fs_root$``, ``$game_data$`` …) or a raw path.
 
-CORDON-LINUX never edits the file inside the game installation: it writes a prepared copy into
+CordonIX never edits the file inside the game installation: it writes a prepared copy into
 the profile root and starts the engine with ``-fsltx <profile root>/fsgame.ltx``, which makes
 that directory the engine's ``$fs_root$`` (``CLocatorAPI::setup_fs_path``).
 """

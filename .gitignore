@@ -1,4 +1,4 @@
-# --- Python / CORDON-LINUX ---
+# --- Python / CordonIX ---
 __pycache__/
 *.py[cod]
 .pytest_cache/

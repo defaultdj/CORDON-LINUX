@@ -715,7 +715,7 @@ def cmd_gui(args, service: CordonService) -> int:
         from .gui.launch import main as gui_main
     except ImportError as exc:  # pragma: no cover - depends on PySide6
         print("Графический интерфейс недоступен: не установлен PySide6.\n"
-              "Установите: pip install 'cordon-linux[gui]' или python -m pip install PySide6-Essentials\n"
+              "Установите: pip install 'cordonix[gui]' или python -m pip install PySide6-Essentials\n"
               f"Техническая информация: {exc}", file=sys.stderr)
         return EXIT_ERROR
     argv = ["cordon-gui"]

@@ -1,6 +1,6 @@
-# CORDON-LINUX - technical overview
+# CordonIX - technical overview
 
-Architecture of the Linux port, the invariants it relies on, and where to extend it.
+Architecture of the UNIX/Linux port, the invariants it relies on, and where to extend it.
 User-facing documentation lives in `USER_GUIDE_LINUX_RU.md` and the repository `README.md`.
 
 ---
@@ -31,6 +31,7 @@ src/cordon/
 │   ├── mo2.py         Mod Organizer 2 modlist import
 │   ├── diagnostics.py log/dump collection and report rendering
 │   ├── discord.py     Discord IPC over the UNIX socket
+│   ├── screenshots.py per-profile screenshot listing and thumbnails
 │   └── service.py     CordonService: the single entry point for both front ends
 ├── gui/       PySide6 only (theme, widgets, dialogs, worker threads, main window)
 └── cli.py     argparse front end, one handler per command
@@ -86,6 +87,11 @@ env = parent env + engine dir in LD_LIBRARY_PATH (only when .so files sit next t
 * `Session` reads the merged stdout/stderr stream on a thread, keeps the last N lines and appends
   to `<root>/logs/cordon-session.log`; `finish_session()` joins the reader so the final output is
   never lost, then collects diagnostics and unmounts fuse overlays.
+* Windows builds (`.exe`, detected by `elf.inspect`) are wrapped by `find_windows_runner()`:
+  Proton from `$PATH` or Steam (`steamapps/common/Proton*`, Proton GE) is preferred, `wine64`/`wine`
+  is the fallback. `run_launch()` tries a native OpenXRay first when one is available and
+  `Profile.auto_proton_fallback` is set; if that session crashes, the `.exe` is relaunched through
+  Proton/Wine in the same prepared workspace.
 
 ## 4. Linux-specific invariants
 

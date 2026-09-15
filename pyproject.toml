@@ -28,7 +28,7 @@ gui = ["PySide6-Essentials>=6.5"]
 dev = ["pytest>=7", "ruff>=0.4"]
 
 [project.urls]
-Homepage = "https://github.com/defaultdj/CORDON-LINUX"
+Homepage = "https://github.com/defaultdj/CordonIX"
 Upstream = "https://github.com/ITzSYUK/CORDON"
 Engine = "https://github.com/OpenXRay/xray-16"
 
@@ -43,9 +43,6 @@ package-dir = { "" = "src" }
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["cordon*"]
-
-[tool.setuptools.package-data]
-cordon = ["assets/*.svg", "assets/*.png", "assets/*.desktop", "assets/*.qss"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/cordon"]

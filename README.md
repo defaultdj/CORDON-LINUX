@@ -53,7 +53,7 @@
 | **Моды** | Добавление папок, сканирование каталогов, установка из архивов (`zip`, `7z`, `rar`, `tar.*`), драг-н-дроп импорт, учет наигранного времени (`⏱ 0 мин`) |
 | **Предупреждение о сборках** | Автоматическое обнаружение `fsgame.ltx`, `bin/` или `levels/` при добавлении папки мода с рекомендацией использовать режим сборки |
 | **Аудит регистра путей** | Автоматический поиск несовпадений регистра в файлах модов с созданием симлинков-алиасов для регистрозависимой VFS Linux |
-| **Импорт из MO2** | Импорт порядка и активности модов из `modlist.txt` Mod Organizer 2 |
+| **Импорт из MO2** | Импорт порядка, включённости и групп из `modlist.txt` Mod Organizer 2 (папка `overwrite` — отдельным слоем) |
 | **Интерфейс** | Полный CLI (`cordon`) и GUI (`cordonix` / `cordon-gui`); тёмная тема PDA; Discord Rich Presence |
 
 ## Установка
@@ -61,8 +61,8 @@
 ### 1. Установка через скрипт `install.sh` (рекомендуется)
 
 ```bash
-git clone https://github.com/defaultdj/CORDON-LINUX.git
-cd CORDON-LINUX
+git clone https://github.com/defaultdj/CordonIX.git
+cd CordonIX
 ./install.sh
 ```
 
@@ -83,7 +83,7 @@ makepkg -si
 ### 3. Установка через pipx
 
 ```bash
-pipx install "cordonix[gui] @ git+https://github.com/defaultdj/CORDON-LINUX.git"
+pipx install "cordonix[gui] @ git+https://github.com/defaultdj/CordonIX.git"
 ```
 
 ## Быстрый старт
@@ -133,7 +133,7 @@ CordonIX автоматически определяет тип бинарник
 python3 -m venv .venv
 .venv/bin/pip install -e ".[gui,dev]" build wheel
 
-# Запуск тестов (188 модульных тестов)
+# Запуск тестов
 .venv/bin/pytest tests/cordon -v
 
 # Запуск дымового теста
@@ -144,7 +144,7 @@ PATH="$PWD/.venv/bin:$PATH" bash cordon-smoke-test.sh
 
 * 📖 [Руководство пользователя (RU)](docs/USER_GUIDE_LINUX_RU.md)
 * 🛠️ [Техническое описание архитектуры (EN)](docs/TECHNICAL_LINUX_EN.md)
-* 📦 [Инструкция по импорту из Mod Organizer 2](docs/MO2_IMPORT_GUIDE_RU.md)
+* 📦 Импорт из Mod Organizer 2 — раздел 13 руководства пользователя
 
 ## Лицензия
 
@@ -172,8 +172,8 @@ PATH="$PWD/.venv/bin:$PATH" bash cordon-smoke-test.sh
 ### Quick Install
 
 ```bash
-git clone https://github.com/defaultdj/CORDON-LINUX.git
-cd CORDON-LINUX && ./install.sh
+git clone https://github.com/defaultdj/CordonIX.git
+cd CordonIX && ./install.sh
 ```
 
 Or start `cordonix` from your application menu.

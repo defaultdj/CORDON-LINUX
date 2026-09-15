@@ -1,6 +1,6 @@
 """Пункт меню приложений: после install.sh лаунчер обязан попасть в раздел «Игры».
 
-Здесь проверяется сам файл packaging/cordon-linux.desktop и то, что установщик кладёт его
+Здесь проверяется сам файл packaging/cordonix.desktop и то, что установщик кладёт его
 в <prefix>/share/applications с абсолютными путями этой установки.
 """
 
@@ -12,8 +12,8 @@ import re
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DESKTOP = os.path.join(ROOT, "packaging", "cordon-linux.desktop")
-ICON = os.path.join(ROOT, "packaging", "cordon-linux.svg")
+DESKTOP = os.path.join(ROOT, "packaging", "cordonix.desktop")
+ICON = os.path.join(ROOT, "packaging", "cordonix.svg")
 INSTALL = os.path.join(ROOT, "install.sh")
 
 
@@ -45,8 +45,8 @@ def desktop() -> dict[str, list[str]]:
 def test_desktop_entry_is_a_launchable_application(desktop):
     assert desktop["Desktop Entry.Type"] == ["Application"]
     assert desktop["Desktop Entry.Name"][0]
-    assert desktop["Desktop Entry.Exec"][0].split()[0] == "cordon-gui", "Exec должен запускать GUI"
-    assert desktop["Desktop Entry.TryExec"][0].endswith("cordon-gui")
+    assert desktop["Desktop Entry.Exec"][0].split()[0] == "cordonix", "Exec должен запускать GUI"
+    assert desktop["Desktop Entry.TryExec"][0].endswith("cordonix")
     assert desktop["Desktop Entry.Terminal"] == ["false"]
     assert desktop["Desktop Entry.StartupNotify"] == ["true"]
 

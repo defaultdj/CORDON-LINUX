@@ -138,16 +138,9 @@ DESKTOP_DIR="${PREFIX}/share/applications"
 ICON_DIR="${PREFIX}/share/icons/hicolor/scalable/apps"
 ${need_sudo} mkdir -p "${DESKTOP_DIR}" "${ICON_DIR}"
 
-if [[ -f "${ROOT}/packaging/cordonix.svg" ]]; then
-  ${need_sudo} cp "${ROOT}/packaging/cordonix.svg" "${ICON_DIR}/cordonix.svg"
-else
-  ${need_sudo} cp "${ROOT}/packaging/cordon-linux.svg" "${ICON_DIR}/cordonix.svg"
-fi
+${need_sudo} cp "${ROOT}/packaging/cordonix.svg" "${ICON_DIR}/cordonix.svg"
 
 desktop_src="${ROOT}/packaging/cordonix.desktop"
-if [[ ! -f "${desktop_src}" ]]; then
-  desktop_src="${ROOT}/packaging/cordon-linux.desktop"
-fi
 
 desktop_tmp="$(mktemp)"
 sed "s|^Exec=.*|Exec=${PREFIX}/bin/cordonix %u|; s|^TryExec=.*|TryExec=${PREFIX}/bin/cordonix|" \

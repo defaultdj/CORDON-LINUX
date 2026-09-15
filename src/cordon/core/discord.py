@@ -119,7 +119,7 @@ class DiscordPresence:
         details: str,
         state: str = "",
         start_timestamp: int | None = None,
-        large_text: str = "CORDON-LINUX",
+        large_text: str = "CordonIX",
     ) -> bool:
         if not self.connect():
             return False
@@ -178,7 +178,7 @@ def announce_launch(client_id: str, profile_name: str, *, game_id: str = "") -> 
     )
     if not presence.set_activity(
         details=f"Играет: {profile_name}",
-        state=f"{state} · через CORDON-LINUX",
+        state=f"{state} · через CordonIX",
         start_timestamp=int(time.time()),
     ):
         presence.close()

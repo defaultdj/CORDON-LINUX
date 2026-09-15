@@ -53,8 +53,6 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(f"CordonIX {__version__}")
         icon_path = util.norm(os.path.join(os.path.dirname(__file__), "..", "..", "..", "packaging", "cordonix.svg"))
-        if not os.path.isfile(icon_path):
-            icon_path = util.norm(os.path.join(os.path.dirname(__file__), "..", "..", "..", "packaging", "cordon-linux.svg"))
         if os.path.isfile(icon_path):
             from PySide6.QtGui import QIcon
             self.setWindowIcon(QIcon(icon_path))

@@ -6,7 +6,7 @@ pkgver=0.2.0
 pkgrel=1
 pkgdesc="Лаунчер профилей и модов S.T.A.L.K.E.R. для UNIX/Linux (OpenXRay / Proton)"
 arch=('any')
-url="https://github.com/defaultdj/CORDON-LINUX"
+url="https://github.com/defaultdj/CordonIX"
 license=('GPL-3.0-only')
 depends=(
   'python'

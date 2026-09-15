@@ -15,10 +15,10 @@ CordonIX includes or uses the following third-party components. Their original l
 
 ## Interface & Typography Assets
 
-- **Symbols Nerd Font / JetBrains Mono** ([Nerd Fonts](https://www.nerdfonts.com/)) — SIL Open Font License 1.1 / Apache 2.0. Used for S.T.A.L.K.E.R. PDA theme UI status and conflict indicators (`☢`, `⏱`, `📁`, `⚙`, etc.).
-- **PDA Interface Assets & Atlas** — Derived from S.T.A.L.K.E.R. game resources and community asset packs.
-- **Icons** — Collected from Iconify/Figma icon sets. Each icon remains subject to the license of its respective icon set.
-- **Application Icon** (`packaging/cordonix.svg`) — Project asset.
+- **Symbols Nerd Font / JetBrains Mono** ([Nerd Fonts](https://www.nerdfonts.com/)) — SIL Open Font License 1.1 / Apache 2.0. Not bundled: the Qt theme references these font families if they are installed on the system, for PDA-style status and conflict indicators (`☢`, `⏱`, etc.).
+- **Application Icon** (`packaging/cordonix.svg`) — Project asset (GPLv3, same as the code).
+
+The PDA UI atlases, icon packs and sounds inherited from the Windows launcher are not part of CordonIX.
 
 ## Legacy & Replaced Components
 

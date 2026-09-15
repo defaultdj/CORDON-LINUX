@@ -1,7 +1,7 @@
 """``cordon-gui`` - the PySide6 front end.
 
 Kept deliberately thin: all the work lives in :mod:`cordon.core`, so the GUI can be skipped
-entirely (``pip install cordon-linux`` without the ``gui`` extra) and the launcher still works
+entirely (``pip install cordonix`` without the ``gui`` extra) and the launcher still works
 from the command line.
 """
 

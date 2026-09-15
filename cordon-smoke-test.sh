@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CORDON-LINUX — дымовой тест на живой системе (Arch/Linux).
+# CordonIX — дымовой тест на живой системе (Arch/Linux).
 #
 #   bash cordon-smoke-test.sh                     # фаза A: самопроверка без игры
 #   bash cordon-smoke-test.sh "Моя сборка"         # фазы A + B (проверки реального профиля)
@@ -60,10 +60,12 @@ if "${CORDON_BIN}" tools 2>&1 | sed 's/^/  /'; then :; else warn "'cordon tools'
 # --- 1. GUI ---------------------------------------------------------------
 head_ "1. Графический интерфейс"
 GUI_SUFFIX=""
-if command -v cordon-gui >/dev/null 2>&1; then
+if command -v cordonix >/dev/null 2>&1; then
+  ok "cordonix найден: $(command -v cordonix)"
+elif command -v cordon-gui >/dev/null 2>&1; then
   ok "cordon-gui найден: $(command -v cordon-gui)"
 else
-  warn "cordon-gui нет в PATH (CLI всё равно работает)"
+  warn "cordonix нет в PATH (CLI всё равно работает)"
 fi
 VENV_PY="${HOME}/.local/lib/cordonix/venv/bin/python"
 if [[ ! -x "${VENV_PY}" ]]; then

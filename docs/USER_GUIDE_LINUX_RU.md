@@ -1,7 +1,7 @@
-# CORDON-LINUX: руководство пользователя
+# CordonIX: руководство пользователя
 
-Лаунчер профилей и модов S.T.A.L.K.E.R. для Linux (движок OpenXRay).
-Порт оригинального [CORDON](https://github.com/ITzSYUK/CORDON) для Windows.
+Лаунчер профилей и модов S.T.A.L.K.E.R. для UNIX/Linux: нативный OpenXRay, а для Windows-сборок —
+Proton/Wine. Форк оригинального [CORDON](https://github.com/ITzSYUK/CORDON) для Windows.
 
 ---
 
@@ -60,17 +60,13 @@ xr_3da -fsltx <профиль>/fsgame.ltx -overlaypath <профиль>/_appdata
 ### Скриптом (без root)
 
 ```bash
-git clone https://github.com/defaultdj/CORDON-LINUX.git
-cd CORDON-LINUX
+git clone https://github.com/defaultdj/CordonIX.git
+cd CordonIX
 ./install.sh                     # в ~/.local
 ```
 
-> Если клон делался до слияния порта в `main`, обновите его: `git pull`.
-> Признак устаревшей копии — нет ни `install.sh`, ни `src/cordon`
-> (там только оригинальный Windows-лаунчер).
-
-Появятся `~/.local/bin/cordon` (CLI), `~/.local/bin/cordon-gui` (GUI) и пункт
-«CORDON-LINUX» в меню приложений.
+Появятся `~/.local/bin/cordon` (CLI), `~/.local/bin/cordonix` (GUI; `cordon-gui` — синоним) и пункт
+«CordonIX» в меню приложений.
 
 Полезные ключи: `--system` (в `/usr/local`), `--prefix DIR`, `--no-gui` (без PySide6),
 `--portable DIR`.
@@ -78,7 +74,7 @@ cd CORDON-LINUX
 ### Через pipx / venv
 
 ```bash
-pipx install "cordon-linux[gui] @ git+https://github.com/defaultdj/CORDON-LINUX.git"
+pipx install "cordonix[gui] @ git+https://github.com/defaultdj/CordonIX.git"
 # или из локальной копии (внутри клонированного каталога)
 python3 -m venv ~/.venvs/cordon
 ~/.venvs/cordon/bin/pip install ".[gui]"
@@ -89,13 +85,15 @@ python3 -m venv ~/.venvs/cordon
 | Утилита | Для чего | Debian/Ubuntu | Arch | Fedora |
 |---|---|---|---|---|
 | `fuse-overlayfs`, `fusermount3` | backend «fuse-overlayfs» | `fuse3 fuse-overlayfs` | `fuse3 fuse-overlayfs` | `fuse3 fuse-overlayfs` |
-| `7z` | `.7z` архивы | `p7zip-full` | `p7zip` | `p7zip p7zip-plugins` |
+| `7z` | `.7z` архивы | `p7zip-full` | `7zip` | `p7zip p7zip-plugins` |
+| `proton` / `wine` | запуск Windows-сборок (`.exe`) | `wine` | `wine` или Proton из Steam | `wine` |
 | `unrar` | `.rar` архивы | `unrar` | `unrar` | `unrar` |
 | `xdg-open` | открытие папок из окна | `xdg-utils` | `xdg-utils` | `xdg-utils` |
 
 Проверить, что нашлось: `cordon tools`.
 
-Обязателен только **Python 3.11+** и **нативная (ELF) сборка OpenXRay**.
+Обязателен только **Python 3.10+** (для PySide6 лучше 3.11+). Для нативного запуска нужна
+**Linux-сборка OpenXRay** (`xr_3da`), для Windows-сборок — Proton или Wine.
 
 ## 3. Первые шаги
 
@@ -108,7 +106,7 @@ cordon doctor  "Anomaly 1.5.2"                      # проверки
 cordon launch  "Anomaly 1.5.2"                      # играть
 ```
 
-Или графически: `cordon-gui`. При первом запуске окно предложит создать профиль.
+Или графически: `cordonix`. При первом запуске окно предложит создать профиль.
 
 ## 4. Окно лаунчера
 
@@ -262,7 +260,10 @@ cordon audit "<профиль>" --fix  # создать ссылки-алиас�
 
 1. собирается оверлей (если состав модов не менялся — сборка переиспользуется);
 2. выполняются проверки; при ошибках лаунчер спросит, запускать ли всё равно;
-3. движок стартует в каталоге профиля с ключами `-fsltx` и `-overlaypath`;
+3. движок стартует в каталоге профиля с ключами `-fsltx` и `-overlaypath`. Если найден Windows
+   `.exe`, он запускается через Proton (Steam / Proton GE) или Wine; если в системе есть нативный
+   OpenXRay, лаунчер сначала пробует его, а при падении автоматически перезапускает сборку через
+   Proton/Wine (выключается в настройках профиля);
 4. вывод игры пишется в окно и в `<профиль>/logs/cordon-session.log`;
 5. после выхода лаунчер считает время сессии, покажет диагностику (лог движка, дампы, если
    были) и отмонтирует fuse-оверлей.
@@ -352,7 +353,7 @@ cordon --portable /media/usb/cordon list       # портативный режи
 | Симптом | Причина и решение |
 |---|---|
 | «Исполняемый файл движка не найден» | в настройках профиля укажите каталог движка или абсолютный путь (`/usr/games/xr_3da` для deb-сборки) |
-| «Найден Windows-исполняемый файл (.exe)» | это сборка для Windows; нужна нативная Linux-сборка OpenXRay |
+| «Найден Windows-исполняемый файл (.exe)» | сборка для Windows: запустится через Proton/Wine (предупреждение) либо нужно установить Wine/Proton или указать нативный OpenXRay (ошибка) |
 | `Exec format error` при запуске | файл движка не ELF либо нет прав: `chmod +x /путь/xr_3da` |
 | «Не хватает библиотеки движка» | доустановите зависимости: `ldd /usr/games/xr_3da` покажет список |
 | Чёрные/битые текстуры, «cannot find texture» в логе | `cordon audit "<профиль>" --fix` |
@@ -399,7 +400,7 @@ bash-completion самого OpenXRay.
 разрешении, можно переменной окружения:
 
 ```bash
-CORDON_SCREEN=1024x768 cordon-gui
+CORDON_SCREEN=1024x768 cordonix
 ```
 
 Если окно почему-то оказалось за пределами экрана (например, настройки остались от другого монитора) —
@@ -410,5 +411,5 @@ CORDON_SCREEN=1024x768 cordon-gui
 
 ## Что дальше
 
-* Общие вопросы по порту — `README.md`.
+* Общие вопросы — `README.md`.
 * Внутреннее устройство и точки расширения — `docs/TECHNICAL_LINUX_EN.md`.

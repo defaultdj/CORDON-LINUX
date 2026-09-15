@@ -191,13 +191,26 @@ def _check_engine(profile: Profile, report: PreflightReport, engine: engine_mod.
     report.engine_executable = info.executable
     report.engine_summary = info.describe()
     if info.binary.kind == "pe":
-        report.add(
-            LEVEL_ERROR,
-            "Найден Windows-исполняемый файл (.exe)",
-            f"{info.executable}: {info.binary.summary()}",
-            "CordonIX работает с нативными сборками OpenXRay для Linux и Windows .exe через Proton/Wine. "
-            "запустить только через Proton/Wine — такие профили здесь не поддерживаются.",
-        )
+        # Windows-сборка: нативно не запустится, но лаунчер умеет запускать .exe через
+        # Proton/Wine (см. launch.find_windows_runner). Импорт ленивый: launch импортирует preflight.
+        from .launch import find_windows_runner
+
+        runner_bin, _argv = find_windows_runner()
+        if shutil.which(runner_bin) or (os.path.isabs(runner_bin) and os.access(runner_bin, os.X_OK)):
+            report.add(
+                LEVEL_WARNING,
+                "Найден Windows-исполняемый файл (.exe)",
+                f"{info.executable}: {info.binary.summary()} — запуск через {runner_bin}",
+                "Нативный OpenXRay быстрее и стабильнее: если сборка не требует своих DLL, "
+                "укажите в настройках профиля Linux-сборку движка (xr_3da).",
+            )
+        else:
+            report.add(
+                LEVEL_ERROR,
+                "Найден Windows-исполняемый файл (.exe), но Proton/Wine не найдены",
+                f"{info.executable}: {info.binary.summary()}",
+                "Установите Wine или Proton (Steam / Proton GE) либо укажите нативную сборку OpenXRay.",
+            )
         return
     if info.binary.kind != "elf":
         report.add(LEVEL_ERROR, "Неподдерживаемый формат исполняемого файла",
