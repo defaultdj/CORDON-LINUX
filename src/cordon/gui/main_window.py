@@ -154,31 +154,63 @@ class MainWindow(QMainWindow):
             tool.setPopupMode(QToolButton.InstantPopup)
             menu = QMenu(tool)
             for entry in entries:
-                menu.addAction(entry)
+                if entry is None:  # разделитель между группами пунктов
+                    menu.addSeparator()
+                else:
+                    menu.addAction(entry)
             tool.setMenu(menu)
             if tip:
                 tool.setToolTip(tip)
             layout.addWidget(tool)
             return tool
 
-        # --- profile / mods
+        # --- actions first: they carry the shortcuts and are shared by buttons and menus,
+        # so every one of them has to exist before the header is laid out
         action("Новый профиль", self.new_profile, "Ctrl+N", "Создать профиль")
-        action("Настройки профиля", self.edit_profile, "Ctrl+E", "Изменить выбранный профиль")
+        action(
+            "Настройки профиля",
+            self.edit_profile,
+            "Ctrl+E",
+            "Движок, исполняемый файл, аргументы запуска, каталоги профиля",
+        )
         action("Дублировать", self.duplicate_profile, "", "Копия профиля вместе с модами")
         action("Удалить", self.delete_profile, "Ctrl+Delete", "Удалить профиль")
-        if not self._compact:
-            button("Новый профиль", self.new_profile, "Ctrl+N")
-            button("Настройки", self.edit_profile, "Ctrl+E — изменить профиль")
-        menu_button(
-            "Профиль",
-            [self.actions_map["Дублировать"], self.actions_map["Удалить"]],
-            "Дублировать или удалить профиль",
-        )
-
         action("Добавить моды", self.add_mods, "Ctrl+O", "Добавить папки модов")
         action("Найти моды", self.scan_mods, "Ctrl+F", "Найти моды в каталоге")
         action("Установить архив", self.install_archive, "Ctrl+I", "Установить мод из архива")
         action("Импорт MO2", self.import_mo2, "", "Импортировать порядок модов из Mod Organizer 2")
+        action("Собрать", self.prepare_profile, "F5", "Собрать оверлей профиля")
+        action("Проверить", self.run_checks, "F6", "Предполётные проверки")
+        action("Конфликты", self.show_conflicts, "Ctrl+K", "Показать конфликты файлов")
+        action("Аудит регистра", self.run_audit, "Ctrl+R", "Проверить регистр путей (Linux-специфика)")
+        action("Отчёт", self.save_report, "Ctrl+P", "Сохранить отчёт о профиле")
+        action("Настройки лаунчера", self.launcher_settings, "Ctrl+,",
+               "Тема, Discord-статус, размер журнала")
+        action("О программе", self.show_about, "F1", "Версия и каталоги лаунчера")
+
+        # --- профиль и моды
+        profile_entries: list[QAction | None] = []
+        if not self._compact:
+            button("Новый профиль", self.new_profile, "Ctrl+N")
+            button("Настройки", self.edit_profile, "Ctrl+E — движок, аргументы запуска, каталоги")
+        else:
+            # На узком экране в шапке остаются только три меню, а кнопки скрываются. Всё, что
+            # раньше было кнопкой, обязано быть в меню: иначе «Настройки профиля» (движок,
+            # аргументы запуска, каталоги) и «Собрать» с «Проверить» исчезают из интерфейса.
+            profile_entries += [
+                self.actions_map["Новый профиль"],
+                self.actions_map["Настройки профиля"],
+                None,
+                self.actions_map["Собрать"],
+                self.actions_map["Проверить"],
+                None,
+            ]
+        profile_entries += [self.actions_map["Дублировать"], self.actions_map["Удалить"]]
+        menu_button(
+            "Профиль",
+            profile_entries,
+            "Создать, настроить, собрать, проверить, дублировать или удалить профиль",
+        )
         menu_button(
             "Моды",
             [
@@ -190,14 +222,7 @@ class MainWindow(QMainWindow):
             "Добавление, поиск и установка модов",
         )
 
-        # --- maintenance
-        action("Собрать", self.prepare_profile, "F5", "Собрать оверлей профиля")
-        action("Проверить", self.run_checks, "F6", "Предполётные проверки")
-        action("Конфликты", self.show_conflicts, "Ctrl+K", "Показать конфликты файлов")
-        action("Аудит регистра", self.run_audit, "Ctrl+R", "Проверить регистр путей (Linux-специфика)")
-        action("Отчёт", self.save_report, "Ctrl+P", "Сохранить отчёт о профиле")
-        action("Настройки лаунчера", self.launcher_settings, "Ctrl+,", "Тема, Discord-статус, размер журнала")
-        action("О программе", self.show_about, "F1", "Версия и каталоги лаунчера")
+        # --- обслуживание профиля
         if not self._compact:
             button("Собрать", self.prepare_profile, "F5 — собрать оверлей профиля")
             button("Проверить", self.run_checks, "F6 — предполётные проверки")

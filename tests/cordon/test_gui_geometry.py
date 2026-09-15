@@ -214,3 +214,92 @@ def test_statusbar_hosts_the_progress_and_hint(qt_app, gui_service, monkeypatch)
     assert window.progress.parent() is bar or bar.isAncestorOf(window.progress)
     assert bar.isAncestorOf(window.hint_label)
     window.close()
+
+
+def _reachable_from_ui(window) -> set[str]:
+    """Все подписи кнопок и пунктов меню, до которых можно добраться мышкой."""
+    from PySide6.QtWidgets import QMenu, QPushButton, QToolButton
+
+    aliases = {"Настройки": "Настройки профиля"}  # кнопка в шапке короче имени действия
+    found: set[str] = set()
+
+    def walk(menu: QMenu) -> None:
+        for act in menu.actions():
+            if act.isSeparator():
+                continue
+            text = act.text().replace("&", "")
+            if act.menu() is not None:
+                walk(act.menu())
+            else:
+                found.add(text)
+
+    for widget in window._header.findChildren(QToolButton):
+        if not widget.isVisibleTo(window):
+            continue
+        if widget.menu() is not None:
+            walk(widget.menu())
+        else:
+            found.add(widget.text().replace("&", "").strip())
+    for widget in window._header.findChildren(QPushButton):
+        if widget.isVisibleTo(window):
+            text = widget.text().replace("&", "").strip()
+            found.add(aliases.get(text, text))
+    return found
+
+
+def test_every_action_is_reachable_on_a_small_screen(qt_app, gui_service, monkeypatch):
+    """Компактный режим убирает кнопки — но ни одно действие не должно пропасть из интерфейса.
+
+    Именно так «Настройки профиля» (движок, аргументы запуска) однажды остались только на Ctrl+E.
+    """
+    monkeypatch.setenv("CORDON_SCREEN", "1024x768")
+    try:
+        from cordon.gui.main_window import MainWindow
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"PySide6 недоступен: {exc}")
+
+    window = MainWindow(gui_service, profile_id=gui_service.settings.selected_profile_id)
+    assert window._compact is True
+    reachable = _reachable_from_ui(window)
+    missing = [name for name in window.actions_map if name not in reachable]
+    assert not missing, f"в компактном режиме недоступны: {missing}"
+    # и то самое, из-за чего завели тест
+    assert "Настройки профиля" in reachable
+    window.close()
+
+
+def test_every_action_is_reachable_on_a_big_screen(qt_app, gui_service, monkeypatch):
+    monkeypatch.setenv("CORDON_SCREEN", "1920x1080")
+    try:
+        from cordon.gui.main_window import MainWindow
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"PySide6 недоступен: {exc}")
+
+    window = MainWindow(gui_service, profile_id=gui_service.settings.selected_profile_id)
+    reachable = _reachable_from_ui(window)
+    missing = [name for name in window.actions_map if name not in reachable]
+    assert not missing, f"на большом экране недоступны: {missing}"
+    window.close()
+
+
+def test_compact_profile_menu_keeps_the_full_set(qt_app, gui_service, monkeypatch):
+    monkeypatch.setenv("CORDON_SCREEN", "1024x768")
+    try:
+        from cordon.gui.main_window import MainWindow
+    except ImportError as exc:  # pragma: no cover
+        pytest.skip(f"PySide6 недоступен: {exc}")
+
+    window = MainWindow(gui_service, profile_id=gui_service.settings.selected_profile_id)
+    menus = [
+        button.menu()
+        for button in window._header.findChildren(__import__("PySide6.QtWidgets", fromlist=["QToolButton"]).QToolButton)
+        if button.menu() is not None
+    ]
+    labels = []
+    for menu in menus:
+        for act in menu.actions():
+            if not act.isSeparator():
+                labels.append(act.text().replace("&", ""))
+    for expected in ("Новый профиль", "Настройки профиля", "Собрать", "Проверить", "Дублировать", "Удалить"):
+        assert expected in labels, f"в меню профиля нет пункта «{expected}»"
+    window.close()
