@@ -13,6 +13,25 @@ from cordon.core.errors import CordonError
 
 
 # ---------------------------------------------------------------------------- scanning
+def test_detect_standalone_mod_indicators(tmp_path):
+    from cordon.core import xray
+
+    mod_dir = tmp_path / "normal_mod"
+    mod_dir.mkdir()
+    (mod_dir / "gamedata").mkdir()
+    assert xray.detect_standalone_mod_indicators(str(mod_dir)) == []
+
+    build_dir = tmp_path / "build_mod"
+    build_dir.mkdir()
+    (build_dir / "fsgame.ltx").write_text("; fs")
+    (build_dir / "bin_x64").mkdir()
+    (build_dir / "levels").mkdir()
+    indicators = xray.detect_standalone_mod_indicators(str(build_dir))
+    assert "fsgame.ltx" in indicators
+    assert "bin/" in indicators
+    assert "levels/" in indicators
+
+
 def test_scan_finds_mod_folders_and_archives(tmp_path):
     root = tmp_path / "downloads"
     (root / "Mod One").mkdir(parents=True)

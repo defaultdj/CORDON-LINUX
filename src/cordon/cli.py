@@ -390,6 +390,14 @@ def cmd_mod_add(args, service: CordonService) -> int:
             expanded.extend(found or [target])
         else:
             expanded.append(target)
+    for p in expanded:
+        if os.path.isdir(p):
+            indicators = xray.detect_standalone_mod_indicators(p)
+            if indicators:
+                print(
+                    f"Предупреждение: папка «{os.path.basename(p)}» содержит {', '.join(indicators)} — "
+                    "это похоже на готовую сборку, а не на мод (создайте профиль с --kind standalone)."
+                )
     added = service.add_mods_from_folders(profile, expanded)
     print(f"Добавлено модов: {added}")
     return EXIT_OK

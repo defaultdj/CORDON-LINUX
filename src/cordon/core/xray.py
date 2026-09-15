@@ -240,3 +240,22 @@ def describe_game_id(game_id: str) -> str:
 def engine_switch_for(game_id: str) -> str:
     """OpenXRay switch that selects the retail game profile of the engine, if any."""
     return {"cs": "-cs"}.get(game_id, "")
+
+
+def detect_standalone_mod_indicators(path: str) -> list[str]:
+    """Return indicators in *path* that suggest it is a standalone build rather than a simple mod.
+
+    Checks for top-level entries: ``fsgame.ltx`` (file), ``bin``/``bin_x64`` (directory),
+    and ``levels`` (directory).
+    """
+    if not os.path.isdir(path):
+        return []
+    found: list[str] = []
+    if os.path.isfile(os.path.join(path, FSGAME_NAME)):
+        found.append("fsgame.ltx")
+    if os.path.isdir(os.path.join(path, "bin")) or os.path.isdir(os.path.join(path, "bin_x64")):
+        found.append("bin/")
+    if os.path.isdir(os.path.join(path, "levels")):
+        found.append("levels/")
+    return found
+

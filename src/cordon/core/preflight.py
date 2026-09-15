@@ -317,6 +317,16 @@ def _check_mods(profile: Profile, report: PreflightReport) -> None:
         report.add(LEVEL_WARNING, "Пустые папки модов",
                    ", ".join(mod.name for mod in empty[:5]),
                    "В таких папках нет ни gamedata, ни игровых подкаталогов.")
+    for mod in profile.mods:
+        if os.path.isdir(mod.path):
+            indicators = xray.detect_standalone_mod_indicators(mod.path)
+            if indicators:
+                report.add(
+                    LEVEL_WARNING,
+                    "Папка мода похожа на готовую сборку",
+                    f"Мод «{mod.name}» содержит {', '.join(indicators)} ({mod.path})",
+                    hint="Готовую сборку лучше добавлять как отдельный профиль типа «standalone», а не как мод.",
+                )
     if enabled and not missing_enabled:
         report.add(LEVEL_OK, "Моды готовы", f"включено: {len(enabled)} из {len(profile.mods)}")
 

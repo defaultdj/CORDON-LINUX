@@ -627,6 +627,14 @@ class MainWindow(QMainWindow):
         if profile is not None:
             self.mod_table.set_mods(profile)
             self.status_strip.detail.setText(summary_line(profile))
+            for mod in profile.mods:
+                if os.path.isdir(mod.path):
+                    indicators = xray.detect_standalone_mod_indicators(mod.path)
+                    if indicators:
+                        self._log(
+                            f"⚠ ВНИМАНИЕ: Мод «{mod.name}» содержит {', '.join(indicators)} — "
+                            "это похоже на готовую сборку! Рекомендуется использовать профиль «standalone»."
+                        )
         self._log(f"Добавлено модов: {added}")
 
     def install_archive(self) -> None:
